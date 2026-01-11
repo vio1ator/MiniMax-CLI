@@ -11,20 +11,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary: minimax-cli
-            artifact_name: minimax-cli-linux-x64
+            binary: minimax
+            artifact_name: minimax-linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary: minimax-cli
-            artifact_name: minimax-cli-macos-x64
+            binary: minimax
+            artifact_name: minimax-macos-x64
           - os: macos-latest
             target: aarch64-apple-darwin
-            binary: minimax-cli
-            artifact_name: minimax-cli-macos-arm64
+            binary: minimax
+            artifact_name: minimax-macos-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            binary: minimax-cli.exe
-            artifact_name: minimax-cli-windows-x64.exe
+            binary: minimax.exe
+            artifact_name: minimax-windows-x64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

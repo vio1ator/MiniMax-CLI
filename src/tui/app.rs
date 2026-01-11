@@ -117,6 +117,8 @@ pub struct TuiOptions {
     pub mcp_config_path: PathBuf,
     #[allow(dead_code)]
     pub use_memory: bool,
+    /// Start in agent mode (--yolo flag)
+    pub start_in_agent_mode: bool,
 }
 
 pub struct App {
@@ -150,18 +152,31 @@ impl App {
         // Check if API key exists
         let needs_onboarding = !has_api_key(config);
 
+        // Start in agent mode if --yolo flag was passed
+        let initial_mode = if options.start_in_agent_mode {
+            AppMode::Agent
+        } else {
+            AppMode::Normal
+        };
+
         let messages = if needs_onboarding {
             Vec::new() // No welcome message during onboarding
         } else {
+            let mode_msg = if options.start_in_agent_mode {
+                " | YOLO MODE (agent + shell enabled)"
+            } else {
+                ""
+            };
             vec![ChatMessage::system(&format!(
-                "Welcome to MiniMax CLI! Model: {} | Workspace: {}",
+                "Welcome to MiniMax! Model: {} | Workspace: {}{}",
                 options.model,
-                options.workspace.display()
+                options.workspace.display(),
+                mode_msg
             ))]
         };
 
         Self {
-            mode: AppMode::Normal,
+            mode: initial_mode,
             input: String::new(),
             cursor_position: 0,
             messages,

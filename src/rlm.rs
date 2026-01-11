@@ -1,6 +1,60 @@
 use crate::config::Config;
-use crate::RlmCommand;
 use anyhow::{Context, Result};
+use std::path::PathBuf;
+
+// Local types for RLM commands (previously in main.rs)
+#[allow(dead_code)]
+pub struct RlmLoadArgs {
+    pub path: PathBuf,
+    pub context_id: String,
+}
+
+#[allow(dead_code)]
+pub struct RlmSearchArgs {
+    pub context_id: String,
+    pub pattern: String,
+    pub context_lines: usize,
+    pub max_results: usize,
+}
+
+#[allow(dead_code)]
+pub struct RlmExecArgs {
+    pub context_id: String,
+    pub code: String,
+}
+
+#[allow(dead_code)]
+pub struct RlmStatusArgs {
+    pub context_id: Option<String>,
+}
+
+#[allow(dead_code)]
+pub struct RlmSaveSessionArgs {
+    pub path: PathBuf,
+    pub context_id: String,
+}
+
+#[allow(dead_code)]
+pub struct RlmLoadSessionArgs {
+    pub path: PathBuf,
+}
+
+#[allow(dead_code)]
+pub struct RlmReplArgs {
+    pub context_id: String,
+    pub load: Option<PathBuf>,
+}
+
+#[allow(dead_code)]
+pub enum RlmCommand {
+    Load(RlmLoadArgs),
+    Search(RlmSearchArgs),
+    Exec(RlmExecArgs),
+    Status(RlmStatusArgs),
+    SaveSession(RlmSaveSessionArgs),
+    LoadSession(RlmLoadSessionArgs),
+    Repl(RlmReplArgs),
+}
 use colored::Colorize;
 use regex::Regex;
 use rustyline::error::ReadlineError;
@@ -245,6 +299,7 @@ impl RlmSession {
     }
 }
 
+#[allow(dead_code)]
 pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
     let mut session = RlmSession::default();
 

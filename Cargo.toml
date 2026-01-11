@@ -1,12 +1,16 @@
 [package]
 name = "minimax-cli"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
-description = "Unofficial MiniMax Platform CLI - Chat, Agent, Image, Video, Audio, Music generation"
+description = "Unofficial MiniMax M2.1 CLI - Just run 'minimax' to start chatting"
 license = "MIT"
-repository = "https://github.com/user/minimax-cli"
+repository = "https://github.com/Hmbown/MiniMax-CLI"
 keywords = ["minimax", "cli", "ai", "agent", "llm"]
 categories = ["command-line-utilities"]
+
+[[bin]]
+name = "minimax"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.100"
