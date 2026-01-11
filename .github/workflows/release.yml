@@ -12,15 +12,19 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary: minimax-cli
+            artifact_name: minimax-cli-linux-x64
           - os: macos-latest
             target: x86_64-apple-darwin
             binary: minimax-cli
+            artifact_name: minimax-cli-macos-x64
           - os: macos-latest
             target: aarch64-apple-darwin
             binary: minimax-cli
+            artifact_name: minimax-cli-macos-arm64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: minimax-cli.exe
+            artifact_name: minimax-cli-windows-x64.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +32,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename binary
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.artifact_name }}
       - uses: actions/upload-artifact@v4
         with:
-          name: minimax-cli-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -39,9 +47,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: List artifacts
+        run: find artifacts -type f
       - uses: softprops/action-gh-release@v1
         with:
-          files: |
-            minimax-cli-*/minimax-cli
-            minimax-cli-*/minimax-cli.exe
+          files: artifacts/*/*
           prerelease: true
