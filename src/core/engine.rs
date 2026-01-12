@@ -42,13 +42,21 @@ use super::turn::{TurnContext, TurnToolCall};
 /// Configuration for the engine
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
+    /// Model identifier to use for responses.
     pub model: String,
+    /// Workspace root for tool execution and file operations.
     pub workspace: PathBuf,
+    /// Allow shell tool execution when true.
     pub allow_shell: bool,
+    /// Enable trust mode (skip approvals) when true.
     pub trust_mode: bool,
+    /// Path to the notes file used by the notes tool.
     pub notes_path: PathBuf,
+    /// Path to the MCP configuration file.
     pub mcp_config_path: PathBuf,
+    /// Maximum number of assistant steps before stopping.
     pub max_steps: u32,
+    /// Maximum number of concurrently active subagents.
     pub max_subagents: usize,
 }
 

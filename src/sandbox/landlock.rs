@@ -8,7 +8,7 @@
 //! # Requirements
 //!
 //! - Linux kernel 5.13 or later with Landlock enabled
-//! - The kernel must be compiled with CONFIG_SECURITY_LANDLOCK=y
+//! - The kernel must be compiled with `CONFIG_SECURITY_LANDLOCK=y`
 //!
 //! # How it works
 //!
@@ -18,7 +18,7 @@
 //!
 //! Note: Once restricted, the process cannot gain more privileges.
 
-use super::{CommandSpec, ExecEnv, SandboxPolicy, SandboxType};
+use super::{CommandSpec, SandboxPolicy};
 use std::ffi::CString;
 use std::path::Path;
 
@@ -59,7 +59,7 @@ pub fn get_abi_version() -> Option<i32> {
             LANDLOCK_CREATE_RULESET_VERSION,
         );
         if result >= 0 {
-            Some(result as i32)
+            i32::try_from(result).ok()
         } else {
             None
         }
@@ -157,7 +157,7 @@ impl LandlockSandbox {
         let ruleset_fd = unsafe {
             libc::syscall(
                 libc::SYS_landlock_create_ruleset,
-                &attr as *const LandlockRulesetAttr,
+                &raw const attr,
                 std::mem::size_of::<LandlockRulesetAttr>(),
                 0u32,
             )
@@ -167,8 +167,12 @@ impl LandlockSandbox {
             return Err(std::io::Error::last_os_error());
         }
 
+        let ruleset_fd = i32::try_from(ruleset_fd).map_err(|_| {
+            std::io::Error::other("Failed to create Landlock ruleset: file descriptor out of range")
+        })?;
+
         Ok(Self {
-            ruleset_fd: ruleset_fd as i32,
+            ruleset_fd,
             policy: policy.clone(),
         })
     }
@@ -211,7 +215,7 @@ impl LandlockSandbox {
                 libc::SYS_landlock_add_rule,
                 self.ruleset_fd,
                 LANDLOCK_RULE_PATH_BENEATH,
-                &attr as *const LandlockPathBeneathAttr,
+                &raw const attr,
                 0u32,
             )
         };
@@ -273,8 +277,8 @@ impl Drop for LandlockSandbox {
 #[cfg(target_os = "linux")]
 pub fn create_landlock_wrapper(
     spec: &CommandSpec,
-    writable_paths: &[std::path::PathBuf],
-    readable_paths: &[std::path::PathBuf],
+    _writable_paths: &[std::path::PathBuf],
+    _readable_paths: &[std::path::PathBuf],
 ) -> Vec<String> {
     // For simplicity, we'll use a shell wrapper that applies Landlock via a helper binary
     // In production, this would be a compiled binary that's part of the CLI

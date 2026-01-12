@@ -47,6 +47,7 @@ impl HistoryCell {
     }
 
     /// Whether this cell is the continuation of a streaming assistant message.
+    #[must_use]
     pub fn is_stream_continuation(&self) -> bool {
         matches!(
             self,
@@ -59,6 +60,7 @@ impl HistoryCell {
 }
 
 /// Convert a message into history cells for rendering.
+#[must_use]
 pub fn history_cells_from_message(msg: &Message) -> Vec<HistoryCell> {
     let mut cells = Vec::new();
     let mut text_blocks = Vec::new();
@@ -247,6 +249,7 @@ impl ExploringCell {
     }
 
     /// Insert a new entry and return its index.
+    #[must_use]
     pub fn insert_entry(&mut self, entry: ExploringEntry) -> usize {
         self.entries.push(entry);
         self.entries.len().saturating_sub(1)
@@ -517,6 +520,7 @@ fn summarize_inline_value(value: &Value, max_len: usize, count_only: bool) -> St
     }
 }
 
+#[must_use]
 pub fn summarize_tool_args(input: &Value) -> Option<String> {
     let obj = input.as_object()?;
     if obj.is_empty() {
@@ -609,6 +613,7 @@ pub fn summarize_tool_args(input: &Value) -> Option<String> {
     }
 }
 
+#[must_use]
 pub fn summarize_tool_output(output: &str) -> String {
     if let Ok(json) = serde_json::from_str::<Value>(output) {
         if let Some(obj) = json.as_object() {
@@ -670,6 +675,7 @@ pub struct McpOutputSummary {
 }
 
 /// Summarize raw MCP output into UI-friendly content.
+#[must_use]
 pub fn summarize_mcp_output(output: &str) -> McpOutputSummary {
     if let Ok(json) = serde_json::from_str::<Value>(output) {
         let is_error = json
@@ -738,6 +744,7 @@ pub fn summarize_mcp_output(output: &str) -> McpOutputSummary {
     }
 }
 
+#[must_use]
 pub fn output_is_image(output: &str) -> bool {
     let lower = output.to_lowercase();
 
@@ -748,6 +755,7 @@ pub fn output_is_image(output: &str) -> bool {
     .any(|ext| lower.contains(ext))
 }
 
+#[must_use]
 pub fn extract_reasoning_summary(text: &str) -> Option<String> {
     let mut lines = text.lines().peekable();
     while let Some(line) = lines.next() {

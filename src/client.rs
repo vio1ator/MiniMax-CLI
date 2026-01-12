@@ -113,6 +113,19 @@ impl MiniMaxClient {
         self.parse_json_response(response).await
     }
 
+    /// Send a JSON POST request and return the raw response.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use crate::client::MiniMaxClient;
+    /// # async fn example(client: &MiniMaxClient) -> anyhow::Result<()> {
+    /// let response = client
+    ///     .post_json_raw("/v1/mock", &serde_json::json!({ "foo": "bar" }))
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn post_json_raw(
         &self,
         path: &str,
