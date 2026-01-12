@@ -713,10 +713,22 @@ async fn run_event_loop(
                     app.move_cursor_end();
                 }
                 KeyCode::Up => {
-                    app.history_up();
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        app.history_up();
+                    } else if should_scroll_with_arrows(app) {
+                        app.scroll_up(1);
+                    } else {
+                        app.history_up();
+                    }
                 }
                 KeyCode::Down => {
-                    app.history_down();
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        app.history_down();
+                    } else if should_scroll_with_arrows(app) {
+                        app.scroll_down(1);
+                    } else {
+                        app.history_down();
+                    }
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.clear_input();
@@ -990,7 +1002,16 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App) {
         ));
     }
 
-    if !matches!(app.transcript_scroll, TranscriptScroll::ToBottom) {
+    let can_scroll = app.last_transcript_total > app.last_transcript_visible;
+    if can_scroll {
+        spans.push(Span::raw(" | "));
+        spans.push(Span::styled(
+            "Up/Down scroll",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    if can_scroll && !matches!(app.transcript_scroll, TranscriptScroll::ToBottom) {
         spans.push(Span::raw(" | "));
         spans.push(Span::styled(
             "PgUp/PgDn/Home/End",
@@ -1463,6 +1484,13 @@ fn copy_selection_hint() -> &'static str {
     {
         "Ctrl+Shift+C copy selection"
     }
+}
+
+fn should_scroll_with_arrows(app: &App) -> bool {
+    app.input.is_empty()
+        && app.history_index.is_none()
+        && !app.is_loading
+        && app.last_transcript_total > app.last_transcript_visible
 }
 
 fn line_to_plain(line: &Line<'static>) -> String {
