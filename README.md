@@ -49,7 +49,7 @@ minimax --yolo
 - Agent mode with file ops, shell, and MCP tools
 - First-class MiniMax media tools (image, audio, video, music)
 - Skills system for reusable, shareable workflows
-- Multi-model support (MiniMax + optional Claude)
+- Multi-model support for MiniMax text + media endpoints
 
 ## TUI Highlights
 
@@ -90,7 +90,6 @@ Keyboard shortcuts:
 
 - MiniMax-M2.1 (default, 204K context, interleaved thinking)
 - MiniMax-M2.1-lightning (faster, same capabilities)
-- Claude models (optional, requires `ANTHROPIC_API_KEY`)
 
 ## Configuration
 
@@ -100,17 +99,15 @@ Config file: `~/.minimax/config.toml`
 api_key = "your-api-key"
 default_text_model = "MiniMax-M2.1"
 
-# Optional: Claude models
-anthropic_api_key = "your-anthropic-key"
-# anthropic_base_url = "https://api.minimax.io/anthropic"
+# Optional: override base URL
+# base_url = "https://api.minimax.io"
 ```
 
 Environment variables:
 
 ```bash
 export MINIMAX_API_KEY=your-api-key
-export ANTHROPIC_API_KEY=your-anthropic-key  # Optional, for Claude
-export ANTHROPIC_BASE_URL=https://api.anthropic.com  # Optional override
+export MINIMAX_BASE_URL=https://api.minimax.io  # Optional override
 ```
 
 Get a MiniMax API key at https://platform.minimax.io

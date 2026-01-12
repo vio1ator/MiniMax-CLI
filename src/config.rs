@@ -47,9 +47,7 @@ impl RetryPolicy {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     pub api_key: Option<String>,
-    pub anthropic_api_key: Option<String>,
     pub base_url: Option<String>,
-    pub anthropic_base_url: Option<String>,
     pub default_text_model: Option<String>,
     pub default_image_model: Option<String>,
     pub default_video_model: Option<String>,
@@ -119,12 +117,9 @@ impl Config {
         normalize_base_url(&base)
     }
 
-    /// Return the Anthropic base URL (normalized).
+    /// Return the MiniMax Anthropic-compatible base URL (normalized).
     #[must_use]
     pub fn anthropic_base_url(&self) -> String {
-        if let Some(base) = self.anthropic_base_url.clone() {
-            return base;
-        }
         let root = normalize_base_url(
             &self
                 .base_url
@@ -144,12 +139,7 @@ impl Config {
     }
 
     pub fn anthropic_api_key(&self) -> Result<String> {
-        self.anthropic_api_key
-            .clone()
-            .or_else(|| self.api_key.clone())
-            .context(
-                "Failed to load API key: set ANTHROPIC_API_KEY or MINIMAX_API_KEY in config.toml or environment.",
-            )
+        self.minimax_api_key()
     }
 
     #[allow(dead_code)]
@@ -274,14 +264,8 @@ fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("MINIMAX_API_KEY") {
         config.api_key = Some(value);
     }
-    if let Ok(value) = std::env::var("ANTHROPIC_API_KEY") {
-        config.anthropic_api_key = Some(value);
-    }
     if let Ok(value) = std::env::var("MINIMAX_BASE_URL") {
         config.base_url = Some(value);
-    }
-    if let Ok(value) = std::env::var("ANTHROPIC_BASE_URL") {
-        config.anthropic_base_url = Some(value);
     }
     if let Ok(value) = std::env::var("MINIMAX_OUTPUT_DIR") {
         config.output_dir = Some(value);
@@ -336,9 +320,7 @@ fn apply_profile(config: ConfigFile, profile: Option<&str>) -> Config {
 fn merge_config(base: Config, override_cfg: Config) -> Config {
     Config {
         api_key: override_cfg.api_key.or(base.api_key),
-        anthropic_api_key: override_cfg.anthropic_api_key.or(base.anthropic_api_key),
         base_url: override_cfg.base_url.or(base.base_url),
-        anthropic_base_url: override_cfg.anthropic_base_url.or(base.anthropic_base_url),
         default_text_model: override_cfg.default_text_model.or(base.default_text_model),
         default_image_model: override_cfg
             .default_image_model
@@ -387,9 +369,7 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
             // Replace existing api_key line
             let mut result = String::new();
             for line in existing.lines() {
-                if line.trim_start().starts_with("api_key")
-                    && !line.trim_start().starts_with("anthropic_api_key")
-                {
+                if line.trim_start().starts_with("api_key") {
                     let _ = writeln!(result, "api_key = \"{api_key}\"");
                 } else {
                     result.push_str(line);
@@ -426,7 +406,7 @@ default_text_model = "MiniMax-M2.1"
 
 /// Check if an API key is configured (either in config or environment)
 pub fn has_api_key(config: &Config) -> bool {
-    config.api_key.is_some() || config.anthropic_api_key.is_some()
+    config.api_key.is_some()
 }
 
 #[cfg(test)]

@@ -245,18 +245,6 @@ fn run_doctor() {
         }
     }
 
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-        println!(
-            "  {} ANTHROPIC_API_KEY is set (Claude available)",
-            "✓".green()
-        );
-    } else {
-        println!(
-            "  {} ANTHROPIC_API_KEY not set (Claude unavailable)",
-            "·".dimmed()
-        );
-    }
-
     // Check MCP configuration
     println!();
     println!("{}", "MCP Servers:".bold());

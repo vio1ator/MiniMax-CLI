@@ -48,7 +48,7 @@ pub async fn run_anthropic_chat(client: &AnthropicClient, options: TextChatOptio
     let mut messages: Vec<Message> = Vec::new();
     let mut stats = SessionStats::new();
 
-    print_banner("Anthropic Mode");
+    print_banner("MiniMax Compatible API");
     print_session_info(
         &options,
         messages.len(),

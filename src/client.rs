@@ -255,7 +255,7 @@ impl AnthropicClient {
         let retry = config.retry_policy();
         let is_minimax = is_minimax_base_url(&base_url);
 
-        logging::info(format!("Anthropic base URL: {base_url}"));
+        logging::info(format!("Compatible base URL: {base_url}"));
         logging::info(format!(
             "Retry policy: enabled={}, max_retries={}, initial_delay={}s, max_delay={}s",
             retry.enabled, retry.max_retries, retry.initial_delay, retry.max_delay

@@ -39,7 +39,7 @@ This document provides an overview of the MiniMax CLI architecture for developer
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │              LLM Client Abstraction (llm_client.rs)       │  │
 │  │  ┌─────────────────┐  ┌─────────────────────────────┐    │  │
-│  │  │  MiniMax Client │  │  Anthropic Client (Claude)  │    │  │
+│  │  │  MiniMax Client │  │  Compatible Client (MiniMax)│    │  │
 │  │  │   (client.rs)   │  │       (client.rs)           │    │  │
 │  │  └─────────────────┘  └─────────────────────────────┘    │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -68,7 +68,7 @@ This document provides an overview of the MiniMax CLI architecture for developer
 
 ### LLM Integration
 
-- **`client.rs`** - HTTP client for Anthropic-compatible API (MiniMax `/anthropic` and Claude)
+- **`client.rs`** - HTTP client for MiniMax APIs, including the Anthropic-compatible format
 - **`llm_client.rs`** - Abstract LLM client trait with retry logic
 - **`models.rs`** - Data structures for API requests/responses
 
@@ -78,8 +78,8 @@ MiniMax provides two API formats:
 - `https://api.minimax.io/anthropic` - Anthropic-compatible (recommended by MiniMax, used by engine)
 - `https://api.minimax.io/v1` - OpenAI-compatible (not used by the engine)
 
-The engine uses `handle_anthropic_turn()` for chat models to keep MiniMax and Claude on the
-same Anthropic-compatible request/response format.
+The engine uses `handle_anthropic_turn()` for chat models to stay on the
+Anthropic-compatible request/response format provided by MiniMax.
 
 ### Tool System
 
