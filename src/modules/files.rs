@@ -1,37 +1,50 @@
-use crate::client::MiniMaxClient;
-use crate::ui::progress_bar;
-use crate::utils::{output_path, pretty_json, write_bytes};
+//! File upload and retrieval helpers for `MiniMax` APIs.
+
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use futures_util::TryStreamExt;
-use serde_json::{json, Value};
-use std::path::PathBuf;
+use serde_json::{Value, json};
 use tokio_util::io::ReaderStream;
 
+use crate::client::MiniMaxClient;
+use crate::ui::progress_bar;
+use crate::utils::{output_path, pretty_json, write_bytes};
+
+// === Types ===
+
+/// Options for uploading a file.
 pub struct FileUploadOptions {
     pub path: PathBuf,
     pub purpose: String,
 }
 
+/// Options for listing files.
 pub struct FileListOptions {
     pub purpose: String,
 }
 
+/// Options for deleting a file.
 pub struct FileDeleteOptions {
     pub file_id: String,
     pub purpose: Option<String>,
 }
 
+/// Options for retrieving a file record.
 pub struct FileRetrieveOptions {
     pub file_id: String,
     pub purpose: Option<String>,
 }
 
+/// Options for downloading a file's content.
 pub struct FileRetrieveContentOptions {
     pub file_id: String,
     pub output: Option<PathBuf>,
     pub output_dir: PathBuf,
 }
+
+// === API Calls ===
 
 pub async fn upload(client: &MiniMaxClient, options: FileUploadOptions) -> Result<Value> {
     let file = tokio::fs::File::open(&options.path)
@@ -64,36 +77,37 @@ pub async fn upload(client: &MiniMaxClient, options: FileUploadOptions) -> Resul
     Ok(response)
 }
 
-pub async fn list(client: &MiniMaxClient, options: FileListOptions) -> Result<()> {
+pub async fn list(client: &MiniMaxClient, options: FileListOptions) -> Result<Value> {
     let response: Value = client
-        .get_json("/v1/files/list", Some(&[("purpose", options.purpose.as_str())]))
+        .get_json(
+            "/v1/files/list",
+            Some(&[("purpose", options.purpose.as_str())]),
+        )
         .await?;
-    println!("{}", pretty_json(&response));
-    Ok(())
+    Ok(response)
 }
 
-pub async fn delete(client: &MiniMaxClient, options: FileDeleteOptions) -> Result<()> {
+pub async fn delete(client: &MiniMaxClient, options: FileDeleteOptions) -> Result<Value> {
     let mut body = json!({ "file_id": options.file_id });
     if let Some(purpose) = options.purpose {
         body["purpose"] = json!(purpose);
     }
     let response: Value = client.post_json("/v1/files/delete", &body).await?;
-    println!("{}", pretty_json(&response));
-    Ok(())
+    Ok(response)
 }
 
-pub async fn retrieve(client: &MiniMaxClient, options: FileRetrieveOptions) -> Result<()> {
+pub async fn retrieve(
+    client: &MiniMaxClient,
+    options: FileRetrieveOptions,
+) -> Result<Option<String>> {
     let url = retrieve_file(client, &options.file_id, options.purpose.as_deref()).await?;
-    if let Some(url) = url {
-        println!("{}", url);
-    }
-    Ok(())
+    Ok(url)
 }
 
 pub async fn retrieve_content(
     client: &MiniMaxClient,
     options: FileRetrieveContentOptions,
-) -> Result<()> {
+) -> Result<PathBuf> {
     let (bytes, content_type) = client
         .get_bytes_with_query(
             "/v1/files/retrieve_content",
@@ -111,8 +125,7 @@ pub async fn retrieve_content(
         .output
         .unwrap_or_else(|| output_path(&options.output_dir, &filename));
     write_bytes(&path, &bytes)?;
-    println!("Saved {}", path.display());
-    Ok(())
+    Ok(path)
 }
 
 pub async fn retrieve_file(
@@ -133,17 +146,19 @@ pub async fn retrieve_file(
     {
         return Ok(Some(url.to_string()));
     }
-    if let Some(data) = response.get("data") {
-        if let Some(url) = data
+    if let Some(data) = response.get("data")
+        && let Some(url) = data
             .get("file_url")
             .or_else(|| data.get("url"))
             .and_then(|value| value.as_str())
-        {
-            return Ok(Some(url.to_string()));
-        }
+    {
+        return Ok(Some(url.to_string()));
     }
 
-    println!("{}", "No file URL returned from retrieve endpoint.".yellow());
+    println!(
+        "{}",
+        "Failed to retrieve file: no file URL returned from retrieve endpoint.".yellow()
+    );
     println!("{}", pretty_json(&response));
     Ok(None)
 }

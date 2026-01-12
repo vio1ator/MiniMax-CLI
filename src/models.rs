@@ -1,5 +1,10 @@
+//! API request/response models for `MiniMax` and Anthropic-compatible endpoints.
+
 use serde::{Deserialize, Serialize};
 
+// === Core Message Types ===
+
+/// Request payload for sending a message to the API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageRequest {
     pub model: String,
@@ -23,6 +28,7 @@ pub struct MessageRequest {
     pub top_p: Option<f32>,
 }
 
+/// System prompt representation (plain text or structured blocks).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum SystemPrompt {
@@ -30,6 +36,7 @@ pub enum SystemPrompt {
     Blocks(Vec<SystemBlock>),
 }
 
+/// A structured system prompt block.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SystemBlock {
     #[serde(rename = "type")]
@@ -39,12 +46,14 @@ pub struct SystemBlock {
     pub cache_control: Option<CacheControl>,
 }
 
+/// A chat message with role and content blocks.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Message {
     pub role: String,
     pub content: Vec<ContentBlock>,
 }
 
+/// A single content block inside a message.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum ContentBlock {
@@ -69,12 +78,14 @@ pub enum ContentBlock {
     },
 }
 
+/// Cache control metadata for tool definitions and blocks.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CacheControl {
     #[serde(rename = "type")]
     pub cache_type: String,
 }
 
+/// Tool definition exposed to the model.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Tool {
     pub name: String,
@@ -84,6 +95,7 @@ pub struct Tool {
     pub cache_control: Option<CacheControl>,
 }
 
+/// Response payload for a message request.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageResponse {
     pub id: String,
@@ -96,16 +108,32 @@ pub struct MessageResponse {
     pub usage: Usage,
 }
 
+/// Token usage metadata for a response.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
 }
 
-// Streaming structures
+/// Map known models to their approximate context window sizes.
+#[must_use]
+pub fn context_window_for_model(model: &str) -> Option<u32> {
+    let lower = model.to_lowercase();
+    if lower.contains("minimax-m2.1") || lower.contains("m2.1") {
+        return Some(204_000);
+    }
+    if lower.contains("claude") {
+        return Some(200_000);
+    }
+    None
+}
+
+// === Streaming Structures ===
+
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type")]
+/// Streaming event types for SSE responses.
 pub enum StreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: MessageResponse },
@@ -115,10 +143,7 @@ pub enum StreamEvent {
         content_block: ContentBlockStart,
     },
     #[serde(rename = "content_block_delta")]
-    ContentBlockDelta {
-        index: u32,
-        delta: Delta,
-    },
+    ContentBlockDelta { index: u32, delta: Delta },
     #[serde(rename = "content_block_stop")]
     ContentBlockStop { index: u32 },
     #[serde(rename = "message_delta")]
@@ -135,6 +160,7 @@ pub enum StreamEvent {
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type")]
+/// Content block types used in streaming starts.
 pub enum ContentBlockStart {
     #[serde(rename = "text")]
     Text { text: String },
@@ -148,8 +174,11 @@ pub enum ContentBlockStart {
     },
 }
 
+// Variant names match Anthropic API spec, suppressing style warning
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Deserialize, Clone)]
 #[serde(tag = "type")]
+/// Delta events emitted during streaming responses.
 pub enum Delta {
     #[serde(rename = "text_delta")]
     TextDelta { text: String },
@@ -161,6 +190,7 @@ pub enum Delta {
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
+/// Delta payload for message-level updates.
 pub struct MessageDelta {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,

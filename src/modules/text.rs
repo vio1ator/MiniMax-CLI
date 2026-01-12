@@ -1,9 +1,10 @@
-use crate::client::{AnthropicClient, MiniMaxClient};
-use crate::models::{
-    CacheControl, ContentBlock, ContentBlockStart, Delta, Message, MessageRequest, StreamEvent,
-    SystemBlock, SystemPrompt, Tool, Usage,
-};
-use crate::utils::pretty_json;
+//! Text chat workflows for `MiniMax` and Anthropic-compatible APIs.
+
+use std::collections::HashMap;
+use std::io::{self, Write};
+use std::path::Path;
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use rustyline::completion::{Completer, Pair};
@@ -13,12 +14,19 @@ use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
 use rustyline::{Context as RlContext, Editor, Helper};
-use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::io::{self, Write};
-use std::path::Path;
-use std::time::Instant;
+use serde_json::{Value, json};
 
+use crate::client::{AnthropicClient, MiniMaxClient};
+use crate::models::{
+    CacheControl, ContentBlock, ContentBlockStart, Delta, Message, MessageRequest, StreamEvent,
+    SystemBlock, SystemPrompt, Tool, Usage,
+};
+use crate::utils::pretty_json;
+
+// === Types ===
+
+/// Options for running text chat sessions.
+#[allow(clippy::struct_excessive_bools)]
 pub struct TextChatOptions {
     pub model: String,
     pub prompt: Option<String>,
@@ -34,33 +42,26 @@ pub struct TextChatOptions {
     pub tool_choice: Option<Value>,
 }
 
+// === Public API ===
+
 pub async fn run_anthropic_chat(client: &AnthropicClient, options: TextChatOptions) -> Result<()> {
     let mut messages: Vec<Message> = Vec::new();
     let mut stats = SessionStats::new();
 
     print_banner("Anthropic Mode");
-    print_session_info(&options, messages.len(), options.tools.as_ref().map(|t| t.len()).unwrap_or(0));
+    print_session_info(
+        &options,
+        messages.len(),
+        options.tools.as_ref().map_or(0, std::vec::Vec::len),
+    );
 
     if let Some(prompt) = options.prompt.as_deref() {
         process_anthropic_turn(client, &options, &mut messages, prompt, &mut stats).await?;
     } else {
         let mut rl = create_editor()?;
-        loop {
-            match read_prompt(&mut rl)? {
-                Some(line) => {
-                    if handle_line_anthropic(
-                        line,
-                        client,
-                        &options,
-                        &mut messages,
-                        &mut stats,
-                    )
-                    .await?
-                    {
-                        break;
-                    }
-                }
-                None => break,
+        while let Some(line) = read_prompt(&mut rl)? {
+            if handle_line_anthropic(line, client, &options, &mut messages, &mut stats).await? {
+                break;
             }
         }
     }
@@ -77,29 +78,28 @@ pub async fn run_official_chat(client: &MiniMaxClient, options: TextChatOptions)
     }
 
     print_banner("Official API");
-    print_session_info(&options, messages.len(), options.tools.as_ref().map(|t| t.len()).unwrap_or(0));
+    print_session_info(
+        &options,
+        messages.len(),
+        options.tools.as_ref().map_or(0, std::vec::Vec::len),
+    );
 
     if let Some(prompt) = options.prompt.as_deref() {
         process_official_turn(client, &options, &mut messages, prompt, &mut stats).await?;
     } else {
         let mut rl = create_editor()?;
-        loop {
-            match read_prompt(&mut rl)? {
-                Some(line) => {
-                    if handle_line_official(
-                        line,
-                        client,
-                        &options,
-                        &mut messages,
-                        &mut stats,
-                        options.system.as_deref(),
-                    )
-                    .await?
-                    {
-                        break;
-                    }
-                }
-                None => break,
+        while let Some(line) = read_prompt(&mut rl)? {
+            if handle_line_official(
+                line,
+                client,
+                &options,
+                &mut messages,
+                &mut stats,
+                options.system.as_deref(),
+            )
+            .await?
+            {
+                break;
             }
         }
     }
@@ -113,7 +113,7 @@ pub fn load_tools(
 ) -> Result<Option<Vec<Tool>>> {
     let tools = if let Some(raw_json) = tools_json {
         let parsed: Vec<Tool> = serde_json::from_str(raw_json)
-            .context("Failed to parse --tools-json. Expected an array of tool definitions.")?;
+            .context("Failed to parse tools_json: expected an array of tool definitions.")?;
         Some(parsed)
     } else if let Some(path) = tools_file {
         let contents = std::fs::read_to_string(path)
@@ -129,11 +129,13 @@ pub fn load_tools(
 }
 
 pub fn parse_tool_choice(choice: Option<&str>) -> Result<Option<Value>> {
-    let Some(choice) = choice else { return Ok(None) };
+    let Some(choice) = choice else {
+        return Ok(None);
+    };
     let trimmed = choice.trim();
     if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        let value: Value = serde_json::from_str(trimmed)
-            .context("Failed to parse --tool-choice as JSON.")?;
+        let value: Value =
+            serde_json::from_str(trimmed).context("Failed to parse tool_choice: expected JSON.")?;
         return Ok(Some(value));
     }
 
@@ -144,6 +146,7 @@ pub fn parse_tool_choice(choice: Option<&str>) -> Result<Option<Value>> {
     Ok(Some(value))
 }
 
+#[allow(clippy::too_many_lines)]
 async fn process_anthropic_turn(
     client: &AnthropicClient,
     options: &TextChatOptions,
@@ -171,7 +174,7 @@ async fn process_anthropic_turn(
         model: options.model.clone(),
         messages: messages.clone(),
         max_tokens: options.max_tokens,
-        system: build_system_prompt(options.system.as_deref(), options.cache_system)?,
+        system: build_system_prompt(options.system.as_deref(), options.cache_system),
         tools: cache_tools(options.tools.clone(), options.cache_tools),
         tool_choice: options.tool_choice.clone(),
         metadata: None,
@@ -194,7 +197,10 @@ async fn process_anthropic_turn(
         while let Some(event) = futures_util::StreamExt::next(&mut stream).await {
             let event = event?;
             match event {
-                StreamEvent::ContentBlockStart { index, content_block } => match content_block {
+                StreamEvent::ContentBlockStart {
+                    index,
+                    content_block,
+                } => match content_block {
                     ContentBlockStart::Thinking { .. } => {
                         is_thinking = true;
                         block_types.insert(index, "thinking".to_string());
@@ -210,11 +216,7 @@ async fn process_anthropic_turn(
                     ContentBlockStart::ToolUse { id, name, .. } => {
                         block_types.insert(index, "tool_use".to_string());
                         tool_blocks.insert(index, (id, name.clone(), String::new()));
-                        println!(
-                            "{} {}",
-                            "Tool Call:".blue().bold(),
-                            name.blue().bold()
-                        );
+                        println!("{} {}", "Tool Call:".blue().bold(), name.blue().bold());
                     }
                 },
                 StreamEvent::ContentBlockDelta { index, delta } => match delta {
@@ -224,7 +226,7 @@ async fn process_anthropic_turn(
                         current_thinking.push_str(&thinking);
                     }
                     Delta::TextDelta { text } => {
-                        print!("{}", text);
+                        print!("{text}");
                         io::stdout().flush()?;
                         current_text.push_str(&text);
                     }
@@ -235,27 +237,22 @@ async fn process_anthropic_turn(
                     }
                 },
                 StreamEvent::ContentBlockStop { index } => {
-                    if let Some(block_type) = block_types.get(&index) {
-                        if block_type == "tool_use" {
-                            if let Some((_id, name, json_str)) = tool_blocks.get(&index) {
-                                if let Ok(parsed) = serde_json::from_str::<Value>(json_str) {
-                                    println!(
-                                        "{} {}",
-                                        "Tool Input:".blue(),
-                                        pretty_json(&parsed)
-                                    );
-                                } else if !json_str.is_empty() {
-                                    println!("{} {}", "Tool Input:".blue(), json_str);
-                                }
-                                println!("{}", format!("Tool End: {}", name).blue().dimmed());
-                            }
+                    if let Some(block_type) = block_types.get(&index)
+                        && block_type == "tool_use"
+                        && let Some((_id, name, json_str)) = tool_blocks.get(&index)
+                    {
+                        if let Ok(parsed) = serde_json::from_str::<Value>(json_str) {
+                            println!("{} {}", "Tool Input:".blue(), pretty_json(&parsed));
+                        } else if !json_str.is_empty() {
+                            println!("{} {}", "Tool Input:".blue(), json_str);
                         }
+                        println!("{}", format!("Tool End: {name}").blue().dimmed());
                     }
                 }
-                StreamEvent::MessageDelta { usage, .. } => {
-                    if let Some(usage) = usage {
-                        stats.update(usage);
-                    }
+                StreamEvent::MessageDelta {
+                    usage: Some(usage), ..
+                } => {
+                    stats.update(&usage);
                 }
                 _ => {}
             }
@@ -276,7 +273,11 @@ async fn process_anthropic_turn(
         }
         for (_index, (id, name, input)) in tool_blocks {
             let parsed = serde_json::from_str::<Value>(&input).unwrap_or(Value::String(input));
-            blocks.push(ContentBlock::ToolUse { id, name, input: parsed });
+            blocks.push(ContentBlock::ToolUse {
+                id,
+                name,
+                input: parsed,
+            });
         }
 
         messages.push(Message {
@@ -292,21 +293,17 @@ async fn process_anthropic_turn(
                     println!("{}", thinking.yellow().dimmed());
                 }
                 ContentBlock::Text { text, .. } => {
-                    println!("{}", text);
+                    println!("{text}");
                 }
                 ContentBlock::ToolUse { name, input, .. } => {
-                    println!(
-                        "{} {}",
-                        "Tool Call:".blue().bold(),
-                        name.blue().bold()
-                    );
+                    println!("{} {}", "Tool Call:".blue().bold(), name.blue().bold());
                     println!("{}", pretty_json(input));
                 }
                 ContentBlock::ToolResult { content, .. } => {
                     if let Ok(value) = serde_json::from_str::<Value>(content) {
                         println!("{}", pretty_json(&value));
                     } else {
-                        println!("{}", content);
+                        println!("{content}");
                     }
                 }
             }
@@ -316,7 +313,7 @@ async fn process_anthropic_turn(
             role: "assistant".to_string(),
             content: response.content,
         });
-        stats.update(response.usage);
+        stats.update(&response.usage);
     }
 
     Ok(())
@@ -342,9 +339,11 @@ async fn process_official_turn(
         "tool_choice": options.tool_choice,
     });
 
-    let response: Value = client.post_json("/v1/text/chatcompletion_v2", &request).await?;
+    let response: Value = client
+        .post_json("/v1/text/chatcompletion_v2", &request)
+        .await?;
     if let Some(text) = extract_text_from_response(&response) {
-        println!("{}", text);
+        println!("{text}");
         messages.push(json!({ "role": "assistant", "content": text }));
     } else {
         println!("{}", pretty_json(&response));
@@ -357,12 +356,11 @@ async fn process_official_turn(
 fn extract_text_from_response(response: &Value) -> Option<String> {
     let choices = response.get("choices")?.as_array()?;
     let choice = choices.first()?;
-    if let Some(message) = choice.get("message") {
-        if let Some(content) = message.get("content") {
-            if let Some(text) = content.as_str() {
-                return Some(text.to_string());
-            }
-        }
+    if let Some(message) = choice.get("message")
+        && let Some(content) = message.get("content")
+        && let Some(text) = content.as_str()
+    {
+        return Some(text.to_string());
     }
     if let Some(text) = choice.get("text").and_then(|v| v.as_str()) {
         return Some(text.to_string());
@@ -370,10 +368,10 @@ fn extract_text_from_response(response: &Value) -> Option<String> {
     None
 }
 
-fn build_system_prompt(system: Option<&str>, cache_system: bool) -> Result<Option<SystemPrompt>> {
-    let Some(text) = system else { return Ok(None) };
+fn build_system_prompt(system: Option<&str>, cache_system: bool) -> Option<SystemPrompt> {
+    let text = system?;
     if !cache_system {
-        return Ok(Some(SystemPrompt::Text(text.to_string())));
+        return Some(SystemPrompt::Text(text.to_string()));
     }
     let blocks = vec![SystemBlock {
         block_type: "text".to_string(),
@@ -382,7 +380,7 @@ fn build_system_prompt(system: Option<&str>, cache_system: bool) -> Result<Optio
             cache_type: "ephemeral".to_string(),
         }),
     }];
-    Ok(Some(SystemPrompt::Blocks(blocks)))
+    Some(SystemPrompt::Blocks(blocks))
 }
 
 fn cache_tools(tools: Option<Vec<Tool>>, cache_tools: bool) -> Option<Vec<Tool>> {
@@ -404,17 +402,20 @@ fn update_stats_from_official_response(response: &Value, stats: &mut SessionStat
         let input = usage
             .get("input_tokens")
             .or_else(|| usage.get("prompt_tokens"))
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| u32::try_from(v).ok())
+            .unwrap_or(0);
         let output = usage
             .get("output_tokens")
             .or_else(|| usage.get("completion_tokens"))
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| u32::try_from(v).ok())
+            .unwrap_or(0);
         let total = usage
             .get("total_tokens")
-            .and_then(|value| value.as_u64())
-            .unwrap_or((input + output) as u64) as u32;
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|v| u32::try_from(v).ok())
+            .unwrap_or_else(|| input.saturating_add(output));
         stats.add_counts(input, output, Some(total));
     }
 }
@@ -429,10 +430,10 @@ fn handle_command_anthropic(
     messages: &mut Vec<Message>,
     options: Option<&TextChatOptions>,
     stats: &mut SessionStats,
-) -> Result<bool> {
+) -> bool {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
-        return Ok(false);
+        return false;
     }
 
     match trimmed {
@@ -452,7 +453,7 @@ fn handle_command_anthropic(
                 print_session_info(
                     options,
                     messages.len(),
-                    options.tools.as_ref().map(|t| t.len()).unwrap_or(0),
+                    options.tools.as_ref().map_or(0, std::vec::Vec::len),
                 );
             }
         }
@@ -460,7 +461,7 @@ fn handle_command_anthropic(
             println!("Unknown command. Type /help for available commands.");
         }
     }
-    Ok(true)
+    true
 }
 
 fn handle_command_official(
@@ -469,10 +470,10 @@ fn handle_command_official(
     options: Option<&TextChatOptions>,
     stats: &mut SessionStats,
     system_prompt: Option<&str>,
-) -> Result<bool> {
+) -> bool {
     let trimmed = input.trim();
     if !trimmed.starts_with('/') {
-        return Ok(false);
+        return false;
     }
 
     match trimmed {
@@ -495,7 +496,7 @@ fn handle_command_official(
                 print_session_info(
                     options,
                     messages.len(),
-                    options.tools.as_ref().map(|t| t.len()).unwrap_or(0),
+                    options.tools.as_ref().map_or(0, std::vec::Vec::len),
                 );
             }
         }
@@ -503,12 +504,12 @@ fn handle_command_official(
             println!("Unknown command. Type /help for available commands.");
         }
     }
-    Ok(true)
+    true
 }
 
 fn print_banner(mode: &str) {
     println!("{}", "MiniMax CLI".bold().cyan());
-    println!("Mode: {}", mode);
+    println!("Mode: {mode}");
     println!("Type /help for commands. Use /exit to quit.\n");
 }
 
@@ -524,13 +525,9 @@ fn print_help() {
 fn print_session_info(options: &TextChatOptions, messages: usize, tools: usize) {
     let width = 56usize;
     let header = "Session Info";
-    println!("{}", format!("┌{}┐", "─".repeat(width)));
-    println!(
-        "│{:^width$}│",
-        header.blue().bold(),
-        width = width
-    );
-    println!("{}", format!("├{}┤", "─".repeat(width)));
+    println!("┌{}┐", "─".repeat(width));
+    println!("│{:^width$}│", header.blue().bold(), width = width);
+    println!("├{}┤", "─".repeat(width));
     println!(
         "│ {:<width$}│",
         format!("Model: {}", options.model),
@@ -546,7 +543,7 @@ fn print_session_info(options: &TextChatOptions, messages: usize, tools: usize) 
         format!("Tools: {}", tools),
         width = width - 1
     );
-    println!("{}", format!("└{}┘", "─".repeat(width)));
+    println!("└{}┘", "─".repeat(width));
     println!();
 }
 
@@ -558,7 +555,7 @@ fn print_stats(stats: &SessionStats) {
     let secs = seconds % 60;
 
     println!("{}", "Session Stats".yellow().bold());
-    println!("  Duration: {:02}:{:02}:{:02}", hours, minutes, secs);
+    println!("  Duration: {hours:02}:{minutes:02}:{secs:02}");
     println!("  Input tokens: {}", stats.input_tokens);
     println!("  Output tokens: {}", stats.output_tokens);
     if stats.total_tokens > 0 {
@@ -583,7 +580,7 @@ impl SessionStats {
         }
     }
 
-    fn update(&mut self, usage: Usage) {
+    fn update(&mut self, usage: &Usage) {
         self.add_counts(usage.input_tokens, usage.output_tokens, None);
     }
 
@@ -699,12 +696,10 @@ async fn handle_line_anthropic(
     if matches_exit(input) {
         return Ok(true);
     }
-    if handle_command_anthropic(input, messages, Some(options), stats)? {
+    if handle_command_anthropic(input, messages, Some(options), stats) {
         return Ok(false);
     }
-    if let Err(error) =
-        process_anthropic_turn(client, options, messages, input, stats).await
-    {
+    if let Err(error) = process_anthropic_turn(client, options, messages, input, stats).await {
         eprintln!("{} {}", "Error:".red().bold(), error);
     }
     Ok(false)
@@ -725,7 +720,7 @@ async fn handle_line_official(
     if matches_exit(input) {
         return Ok(true);
     }
-    if handle_command_official(input, messages, Some(options), stats, system_prompt)? {
+    if handle_command_official(input, messages, Some(options), stats, system_prompt) {
         return Ok(false);
     }
     if let Err(error) = process_official_turn(client, options, messages, input, stats).await {

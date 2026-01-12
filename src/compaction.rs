@@ -1,9 +1,17 @@
+//! Context compaction for long conversations.
+//! NOTE: Not yet integrated into the engine - planned feature.
+
 #![allow(dead_code)]
 
-use crate::client::AnthropicClient;
-use crate::models::{CacheControl, ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt};
 use anyhow::Result;
+use std::fmt::Write;
 
+use crate::client::AnthropicClient;
+use crate::models::{
+    CacheControl, ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt,
+};
+
+/// Configuration for conversation compaction behavior.
 #[derive(Debug, Clone)]
 pub struct CompactionConfig {
     pub enabled: bool,
@@ -35,9 +43,9 @@ pub fn estimate_tokens(messages: &[Message]) -> usize {
                 .map(|c| match c {
                     ContentBlock::Text { text, .. } => text.len() / 4,
                     ContentBlock::Thinking { thinking } => thinking.len() / 4,
-                    ContentBlock::ToolUse { input, .. } => {
-                        serde_json::to_string(input).map(|s| s.len() / 4).unwrap_or(100)
-                    }
+                    ContentBlock::ToolUse { input, .. } => serde_json::to_string(input)
+                        .map(|s| s.len() / 4)
+                        .unwrap_or(100),
                     ContentBlock::ToolResult { content, .. } => content.len() / 4,
                 })
                 .sum::<usize>()
@@ -81,8 +89,7 @@ pub async fn compact_messages(
     let summary_block = SystemBlock {
         block_type: "text".to_string(),
         text: format!(
-            "## Conversation Summary\n\nThe following is a summary of the earlier conversation:\n\n{}\n\n---\nRecent messages follow:",
-            summary
+            "## Conversation Summary\n\nThe following is a summary of the earlier conversation:\n\n{summary}\n\n---\nRecent messages follow:"
         ),
         cache_control: if config.cache_summary {
             Some(CacheControl {
@@ -107,17 +114,25 @@ async fn create_summary(
     // Format messages for summarization
     let mut conversation_text = String::new();
     for msg in messages {
-        let role = if msg.role == "user" { "User" } else { "Assistant" };
+        let role = if msg.role == "user" {
+            "User"
+        } else {
+            "Assistant"
+        };
         for block in &msg.content {
             match block {
                 ContentBlock::Text { text, .. } => {
-                    conversation_text.push_str(&format!("{}: {}\n\n", role, text));
+                    let _ = write!(conversation_text, "{role}: {text}\n\n");
                 }
                 ContentBlock::ToolUse { name, .. } => {
-                    conversation_text.push_str(&format!("{}: [Used tool: {}]\n\n", role, name));
+                    let _ = write!(conversation_text, "{role}: [Used tool: {name}]\n\n");
                 }
                 ContentBlock::ToolResult { content, .. } => {
-                    conversation_text.push_str(&format!("Tool result: {}\n\n", &content[..500.min(content.len())]));
+                    let _ = write!(
+                        conversation_text,
+                        "Tool result: {}\n\n",
+                        &content[..500.min(content.len())]
+                    );
                 }
                 ContentBlock::Thinking { .. } => {
                     // Skip thinking blocks in summary
@@ -134,8 +149,7 @@ async fn create_summary(
                 text: format!(
                     "Summarize the following conversation in a concise but comprehensive way. \
                      Preserve key information, decisions made, and any important context. \
-                     Keep it under 500 words.\n\n---\n\n{}",
-                    conversation_text
+                     Keep it under 500 words.\n\n---\n\n{conversation_text}"
                 ),
                 cache_control: None,
             }],

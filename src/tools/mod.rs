@@ -1,0 +1,53 @@
+//! Tool system modules and re-exports.
+
+#![allow(dead_code, unused_imports)]
+
+// === Modules ===
+
+pub mod file;
+pub mod minimax;
+pub mod patch;
+pub mod plan;
+pub mod registry;
+pub mod search;
+pub mod shell;
+pub mod spec;
+pub mod subagent;
+pub mod todo;
+
+// === Re-exports ===
+
+// Re-export commonly used types from spec
+pub use spec::ToolContext;
+
+// Re-export minimax tools
+pub use minimax::{
+    AnalyzeImageTool, DeleteFileTool, DownloadFileTool, GenerateImageTool, GenerateMusicTool,
+    GenerateVideoTool, ListFilesTool, QueryVideoTool, RetrieveFileTool, TtsAsyncCreateTool,
+    TtsAsyncQueryTool, TtsTool, UploadFileTool, VideoTemplateCreateTool, VideoTemplateQueryTool,
+    VoiceCloneTool, VoiceDeleteTool, VoiceDesignTool, VoiceListTool,
+};
+
+// Re-export registry types
+pub use registry::{ToolRegistry, ToolRegistryBuilder};
+
+// Re-export search tools
+pub use search::GrepFilesTool;
+
+// Re-export patch tools
+pub use patch::ApplyPatchTool;
+
+// Re-export file tools
+pub use file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+
+// Re-export shell types
+pub use shell::ExecShellTool;
+
+// Re-export subagent types
+pub use subagent::SubAgent;
+
+// Re-export todo types
+pub use todo::TodoWriteTool;
+
+// Re-export plan types
+pub use plan::UpdatePlanTool;

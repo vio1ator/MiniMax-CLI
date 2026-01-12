@@ -1,10 +1,20 @@
-use crate::models::{Message, SystemPrompt};
-use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+//! Legacy session module - superseded by `session_manager.rs`
+//! Kept for reference but not actively used.
+
+#![allow(dead_code)]
+
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use crate::models::{Message, SystemPrompt};
+
+// === Types ===
+
+/// Legacy on-disk session representation.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentSession {
     pub model: String,
@@ -15,6 +25,8 @@ pub struct AgentSession {
 }
 
 impl AgentSession {
+    /// Create a new session snapshot with the current timestamp.
+    #[must_use]
     pub fn new(model: String, workspace: String, system_prompt: Option<SystemPrompt>) -> Self {
         Self {
             model,
@@ -29,19 +41,20 @@ impl AgentSession {
     }
 }
 
+// === Persistence ===
+
 pub fn save(path: &Path, session: &AgentSession) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let contents = serde_json::to_string_pretty(session)?;
-    fs::write(path, contents)
-        .with_context(|| format!("Failed to write {}", path.display()))?;
+    fs::write(path, contents).with_context(|| format!("Failed to write {}", path.display()))?;
     Ok(())
 }
 
 pub fn load(path: &Path) -> Result<AgentSession> {
-    let contents = fs::read_to_string(path)
-        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let contents =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
     let session: AgentSession = serde_json::from_str(&contents)
         .with_context(|| format!("Failed to parse {}", path.display()))?;
     Ok(session)
@@ -52,7 +65,7 @@ pub fn export_markdown(path: &Path, session: &AgentSession) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
     let mut lines = Vec::new();
-    lines.push(format!("# MiniMax CLI Session"));
+    lines.push("# MiniMax CLI Session".to_string());
     lines.push(format!("Model: {}", session.model));
     lines.push(format!("Workspace: {}", session.workspace));
     lines.push(String::new());
@@ -75,7 +88,7 @@ pub fn export_markdown(path: &Path, session: &AgentSession) -> Result<()> {
                     ));
                 }
                 crate::models::ContentBlock::ToolResult { content, .. } => {
-                    lines.push(format!("Tool Result: {}", content));
+                    lines.push(format!("Tool Result: {content}"));
                 }
             }
         }

@@ -1,24 +1,39 @@
-use anyhow::Result;
-use clap::Parser;
-use dotenvy::dotenv;
+//! CLI entry point for the `MiniMax` client.
+
+use std::io;
 use std::path::PathBuf;
 
+use anyhow::Result;
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
+use dotenvy::dotenv;
+
 mod client;
+mod command_safety;
+mod commands;
+mod compaction;
 mod config;
+mod core;
+mod hooks;
+mod llm_client;
 mod logging;
-mod models;
-mod models_catalog;
-mod modules;
-mod agent;
 mod mcp;
-mod skills;
-mod memory;
+mod models;
+mod modules;
+mod pricing;
+mod project_context;
+mod project_doc;
+mod prompts;
+mod rlm;
+mod sandbox;
 mod session;
+mod session_manager;
+mod settings;
+mod skills;
+mod tools;
 mod tui;
 mod ui;
 mod utils;
-mod rlm;
-mod compaction;
 
 use crate::config::Config;
 
@@ -31,6 +46,10 @@ use crate::config::Config;
     long_about = "Unofficial CLI for MiniMax M2.1 API.\n\nJust run 'minimax' to start chatting.\n\nNot affiliated with MiniMax Inc."
 )]
 struct Cli {
+    /// Subcommand to run
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Send a one-shot prompt (non-interactive)
     #[arg(short, long)]
     prompt: Option<String>,
@@ -38,6 +57,10 @@ struct Cli {
     /// YOLO mode: enable agent tools + shell execution
     #[arg(long)]
     yolo: bool,
+
+    /// Maximum number of concurrent sub-agents (1-5)
+    #[arg(long)]
+    max_subagents: Option<usize>,
 
     /// Path to config file
     #[arg(long)]
@@ -54,6 +77,37 @@ struct Cli {
     /// Workspace directory for file operations
     #[arg(short, long)]
     workspace: Option<PathBuf>,
+
+    /// Resume a previous session by ID or prefix
+    #[arg(short, long)]
+    resume: Option<String>,
+
+    /// Continue the most recent session
+    #[arg(short = 'c', long = "continue")]
+    continue_session: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Run system diagnostics and check configuration
+    Doctor,
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// List saved sessions
+    Sessions {
+        /// Maximum number of sessions to display
+        #[arg(short, long, default_value = "20")]
+        limit: usize,
+        /// Search sessions by title
+        #[arg(short, long)]
+        search: Option<String>,
+    },
+    /// Create default AGENTS.md in current directory
+    Init,
 }
 
 #[tokio::main]
@@ -62,22 +116,54 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     logging::set_verbose(cli.verbose);
 
-    let profile = cli.profile.or_else(|| std::env::var("MINIMAX_PROFILE").ok());
-    let config = Config::load(cli.config, profile)?;
+    // Handle subcommands first
+    if let Some(command) = cli.command {
+        return match command {
+            Commands::Doctor => {
+                run_doctor();
+                Ok(())
+            }
+            Commands::Completions { shell } => {
+                generate_completions(shell);
+                Ok(())
+            }
+            Commands::Sessions { limit, search } => list_sessions(limit, search),
+            Commands::Init => init_project(),
+        };
+    }
 
-    let workspace = cli.workspace.unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-    });
+    let profile = cli
+        .profile
+        .or_else(|| std::env::var("MINIMAX_PROFILE").ok());
+    let config = Config::load(cli.config, profile.as_deref())?;
+
+    let workspace = cli
+        .workspace
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let model = config
         .default_text_model
         .clone()
         .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+    let max_subagents = cli
+        .max_subagents
+        .map_or_else(|| config.max_subagents(), |value| value.clamp(1, 5));
 
     // One-shot prompt mode
     if let Some(prompt) = cli.prompt {
         return run_one_shot(&config, &model, &prompt).await;
     }
+
+    // Handle session resume
+    let resume_session_id = if cli.continue_session {
+        // Get most recent session
+        match session_manager::SessionManager::default_location() {
+            Ok(manager) => manager.get_latest_session().ok().flatten().map(|m| m.id),
+            Err(_) => None,
+        }
+    } else {
+        cli.resume.clone()
+    };
 
     // Default: Interactive TUI
     // --yolo enables agent mode with shell execution
@@ -93,9 +179,231 @@ async fn main() -> Result<()> {
             mcp_config_path: config.mcp_config_path(),
             use_memory: false,
             start_in_agent_mode: cli.yolo,
+            yolo: cli.yolo, // YOLO mode auto-approves all tool executions
+            resume_session_id,
+            max_subagents,
         },
     )
     .await
+}
+
+/// Generate shell completions for the given shell
+fn generate_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    let name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, name, &mut io::stdout());
+}
+
+/// Run system diagnostics
+fn run_doctor() {
+    use colored::Colorize;
+
+    println!("{}", "MiniMax CLI Doctor".bold().cyan());
+    println!("{}", "==================".cyan());
+    println!();
+
+    // Version info
+    println!("{}", "Version Information:".bold());
+    println!("  minimax-cli: {}", env!("CARGO_PKG_VERSION"));
+    println!("  rust: {}", rustc_version());
+    println!();
+
+    // Check configuration
+    println!("{}", "Configuration:".bold());
+    let config_dir =
+        dirs::home_dir().map_or_else(|| PathBuf::from(".minimax"), |h| h.join(".minimax"));
+
+    let config_file = config_dir.join("config.toml");
+    if config_file.exists() {
+        println!(
+            "  {} config.toml found at {}",
+            "✓".green(),
+            config_file.display()
+        );
+    } else {
+        println!(
+            "  {} config.toml not found (will use defaults)",
+            "!".yellow()
+        );
+    }
+
+    // Check API keys
+    println!();
+    println!("{}", "API Keys:".bold());
+    if std::env::var("MINIMAX_API_KEY").is_ok() {
+        println!("  {} MINIMAX_API_KEY is set", "✓".green());
+    } else {
+        let key_in_config = Config::load(None, None)
+            .ok()
+            .and_then(|c| c.minimax_api_key().ok())
+            .is_some();
+        if key_in_config {
+            println!("  {} MiniMax API key found in config", "✓".green());
+        } else {
+            println!("  {} MiniMax API key not configured", "✗".red());
+            println!("    Run 'minimax' to configure interactively, or set MINIMAX_API_KEY");
+        }
+    }
+
+    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+        println!(
+            "  {} ANTHROPIC_API_KEY is set (Claude available)",
+            "✓".green()
+        );
+    } else {
+        println!(
+            "  {} ANTHROPIC_API_KEY not set (Claude unavailable)",
+            "·".dimmed()
+        );
+    }
+
+    // Check MCP configuration
+    println!();
+    println!("{}", "MCP Servers:".bold());
+    let mcp_config = config_dir.join("mcp.json");
+    if mcp_config.exists() {
+        println!("  {} mcp.json found", "✓".green());
+        if let Ok(content) = std::fs::read_to_string(&mcp_config)
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(servers) = json.get("mcpServers").and_then(|s| s.as_object())
+        {
+            println!("  {} {} server(s) configured", "·".dimmed(), servers.len());
+            for name in servers.keys() {
+                println!("    - {name}");
+            }
+        }
+    } else {
+        println!("  {} mcp.json not found (no MCP servers)", "·".dimmed());
+    }
+
+    // Check skills directory
+    println!();
+    println!("{}", "Skills:".bold());
+    let skills_dir = config_dir.join("skills");
+    if skills_dir.exists() {
+        let skill_count = std::fs::read_dir(skills_dir)
+            .map(|entries| entries.filter_map(std::result::Result::ok).count())
+            .unwrap_or(0);
+        println!(
+            "  {} skills directory found ({} items)",
+            "✓".green(),
+            skill_count
+        );
+    } else {
+        println!("  {} skills directory not found", "·".dimmed());
+    }
+
+    // Platform-specific checks
+    println!();
+    println!("{}", "Platform:".bold());
+    println!("  OS: {}", std::env::consts::OS);
+    println!("  Arch: {}", std::env::consts::ARCH);
+
+    #[cfg(target_os = "macos")]
+    {
+        if std::path::Path::new("/usr/bin/sandbox-exec").exists() {
+            println!("  {} macOS sandbox available", "✓".green());
+        } else {
+            println!("  {} macOS sandbox not available", "!".yellow());
+        }
+    }
+
+    println!();
+    println!("{}", "All checks complete!".green().bold());
+}
+
+fn rustc_version() -> String {
+    // Try to get rustc version, fall back to "unknown"
+    std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map_or_else(|| "unknown".to_string(), |s| s.trim().to_string())
+}
+
+/// List saved sessions
+fn list_sessions(limit: usize, search: Option<String>) -> Result<()> {
+    use colored::Colorize;
+    use session_manager::{SessionManager, format_session_line};
+
+    let manager = SessionManager::default_location()?;
+
+    let sessions = if let Some(query) = search {
+        manager.search_sessions(&query)?
+    } else {
+        manager.list_sessions()?
+    };
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        println!("Start a new session with: {}", "minimax".cyan());
+        return Ok(());
+    }
+
+    println!("{}", "Saved Sessions".bold().cyan());
+    println!("{}", "==============".cyan());
+    println!();
+
+    for (i, session) in sessions.iter().take(limit).enumerate() {
+        let line = format_session_line(session);
+        if i == 0 {
+            println!("  {} {}", "*".green(), line);
+        } else {
+            println!("    {line}");
+        }
+    }
+
+    let total = sessions.len();
+    if total > limit {
+        println!();
+        println!(
+            "  {} more session(s). Use --limit to show more.",
+            total - limit
+        );
+    }
+
+    println!();
+    println!(
+        "Resume with: {} {}",
+        "minimax --resume".cyan(),
+        "<session-id>".dimmed()
+    );
+    println!("Continue latest: {}", "minimax --continue".cyan());
+
+    Ok(())
+}
+
+/// Initialize a new project with AGENTS.md
+fn init_project() -> Result<()> {
+    use colored::Colorize;
+    use project_context::create_default_agents_md;
+
+    let workspace = std::env::current_dir()?;
+    let agents_path = workspace.join("AGENTS.md");
+
+    if agents_path.exists() {
+        println!(
+            "{} AGENTS.md already exists at {}",
+            "!".yellow(),
+            agents_path.display()
+        );
+        return Ok(());
+    }
+
+    match create_default_agents_md(&workspace) {
+        Ok(path) => {
+            println!("{} Created {}", "✓".green(), path.display());
+            println!();
+            println!("Edit this file to customize how the AI agent works with your project.");
+            println!("The instructions will be loaded automatically when you run minimax.");
+        }
+        Err(e) => {
+            println!("{} Failed to create AGENTS.md: {}", "✗".red(), e);
+        }
+    }
+
+    Ok(())
 }
 
 async fn run_one_shot(config: &Config, model: &str, prompt: &str) -> Result<()> {
@@ -128,7 +436,7 @@ async fn run_one_shot(config: &Config, model: &str, prompt: &str) -> Result<()> 
 
     for block in response.content {
         if let ContentBlock::Text { text, .. } = block {
-            println!("{}", text);
+            println!("{text}");
         }
     }
 

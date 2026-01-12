@@ -1,7 +1,28 @@
-use crate::config::{has_api_key, save_api_key, Config};
-use crate::models::{Message, SystemPrompt};
-use std::path::PathBuf;
+//! Application state for the `MiniMax` TUI.
 
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
+use std::time::Instant;
+
+use ratatui::layout::Rect;
+use serde_json::Value;
+use thiserror::Error;
+
+use crate::config::{Config, has_api_key, save_api_key};
+use crate::hooks::{HookContext, HookEvent, HookExecutor, HookResult};
+use crate::models::{Message, SystemPrompt};
+use crate::tools::plan::{SharedPlanState, new_shared_plan_state};
+use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
+use crate::tui::approval::{ApprovalMode, ApprovalState};
+use crate::tui::clipboard::{ClipboardContent, ClipboardHandler};
+use crate::tui::history::HistoryCell;
+use crate::tui::scrolling::{MouseScrollState, TranscriptScroll};
+use crate::tui::selection::TranscriptSelection;
+use crate::tui::transcript::TranscriptViewCache;
+
+// === Types ===
+
+/// State machine for onboarding new users.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnboardingState {
     Welcome,
@@ -10,6 +31,7 @@ pub enum OnboardingState {
     None,
 }
 
+/// Supported application modes for the TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
     Normal,
@@ -20,7 +42,8 @@ pub enum AppMode {
 }
 
 impl AppMode {
-    pub fn label(&self) -> &'static str {
+    /// Short label used in the UI footer.
+    pub fn label(self) -> &'static str {
         match self {
             AppMode::Normal => "NORMAL",
             AppMode::Edit => "EDIT",
@@ -31,7 +54,8 @@ impl AppMode {
     }
 
     #[allow(dead_code)]
-    pub fn description(&self) -> &'static str {
+    /// Description shown in help or onboarding text.
+    pub fn description(self) -> &'static str {
         match self {
             AppMode::Normal => "Chat mode - ask questions, get answers",
             AppMode::Edit => "Edit mode - modify files with AI assistance",
@@ -42,71 +66,15 @@ impl AppMode {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-    pub is_thinking: bool,
-    pub is_tool_call: bool,
-    pub tool_name: Option<String>,
-}
-
-impl ChatMessage {
-    pub fn user(content: &str) -> Self {
-        Self {
-            role: "user".to_string(),
-            content: content.to_string(),
-            is_thinking: false,
-            is_tool_call: false,
-            tool_name: None,
-        }
-    }
-
-    pub fn assistant(content: &str) -> Self {
-        Self {
-            role: "assistant".to_string(),
-            content: content.to_string(),
-            is_thinking: false,
-            is_tool_call: false,
-            tool_name: None,
-        }
-    }
-
-    pub fn thinking(content: &str) -> Self {
-        Self {
-            role: "assistant".to_string(),
-            content: content.to_string(),
-            is_thinking: true,
-            is_tool_call: false,
-            tool_name: None,
-        }
-    }
-
-    pub fn tool_call(name: &str, content: &str) -> Self {
-        Self {
-            role: "assistant".to_string(),
-            content: content.to_string(),
-            is_thinking: false,
-            is_tool_call: true,
-            tool_name: Some(name.to_string()),
-        }
-    }
-
-    pub fn system(content: &str) -> Self {
-        Self {
-            role: "system".to_string(),
-            content: content.to_string(),
-            is_thinking: false,
-            is_tool_call: false,
-            tool_name: None,
-        }
-    }
-}
-
+/// Configuration required to bootstrap the TUI.
+#[derive(Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TuiOptions {
     pub model: String,
     pub workspace: PathBuf,
     pub allow_shell: bool,
+    /// Maximum number of concurrent sub-agents.
+    pub max_subagents: usize,
     #[allow(dead_code)]
     pub skills_dir: PathBuf,
     #[allow(dead_code)]
@@ -119,19 +87,38 @@ pub struct TuiOptions {
     pub use_memory: bool,
     /// Start in agent mode (--yolo flag)
     pub start_in_agent_mode: bool,
+    /// Auto-approve tool executions (yolo mode)
+    pub yolo: bool,
+    /// Resume a previous session by ID
+    #[allow(dead_code)] // Used in future session resume feature
+    pub resume_session_id: Option<String>,
 }
 
+/// Global UI state for the TUI.
+#[allow(clippy::struct_excessive_bools)]
 pub struct App {
     pub mode: AppMode,
     pub input: String,
     pub cursor_position: usize,
-    pub messages: Vec<ChatMessage>,
+    pub history: Vec<HistoryCell>,
+    pub history_version: u64,
     pub api_messages: Vec<Message>,
-    pub scroll_offset: usize,
+    pub transcript_scroll: TranscriptScroll,
+    pub pending_scroll_delta: i32,
+    pub mouse_scroll: MouseScrollState,
+    pub transcript_cache: TranscriptViewCache,
+    pub transcript_selection: TranscriptSelection,
+    pub last_transcript_area: Option<Rect>,
+    pub last_scrollbar_area: Option<Rect>,
+    pub last_transcript_top: usize,
+    pub last_transcript_visible: usize,
+    pub last_transcript_total: usize,
     pub is_loading: bool,
     pub status_message: Option<String>,
     pub model: String,
     pub workspace: PathBuf,
+    pub skills_dir: PathBuf,
+    #[allow(dead_code)]
     pub system_prompt: Option<SystemPrompt>,
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
@@ -141,51 +128,173 @@ pub struct App {
     pub compact_threshold: usize,
     pub total_tokens: u32,
     pub allow_shell: bool,
+    pub max_subagents: usize,
     // Onboarding
     pub onboarding: OnboardingState,
     pub api_key_input: String,
     pub api_key_cursor: usize,
+    // Hooks system
+    pub hooks: HookExecutor,
+    #[allow(dead_code)]
+    pub yolo: bool,
+    // Clipboard handler
+    pub clipboard: ClipboardHandler,
+    // Tool approval system
+    pub approval_state: ApprovalState,
+    #[allow(dead_code)] // Used by engine to decide when to send ApprovalRequired
+    pub approval_mode: ApprovalMode,
+    /// Current session ID for auto-save updates
+    pub current_session_id: Option<String>,
+    /// Trust mode - allow access outside workspace
+    pub trust_mode: bool,
+    /// Project documentation (MINIMAX.md or AGENTS.md)
+    pub project_doc: Option<String>,
+    /// Plan state for tracking tasks
+    pub plan_state: SharedPlanState,
+    /// Todo list for `TodoWriteTool`
+    #[allow(dead_code)] // For future engine integration
+    pub todos: SharedTodoList,
+    /// Tool execution log
+    pub tool_log: Vec<String>,
+    /// Session cost tracking
+    pub session_cost: f64,
+    /// Active skill to apply to next user message
+    pub active_skill: Option<String>,
+    /// Tool call cells by tool id
+    pub tool_cells: HashMap<String, usize>,
+    /// Active exploring cell index
+    pub exploring_cell: Option<usize>,
+    /// Mapping of exploring tool ids to (cell index, entry index)
+    pub exploring_entries: HashMap<String, (usize, usize)>,
+    /// Tool calls that should be ignored by the UI
+    pub ignored_tool_calls: HashSet<String>,
+    /// Last exec wait command shown (for duplicate suppression)
+    pub last_exec_wait_command: Option<String>,
+    /// Current streaming assistant cell
+    pub streaming_message_index: Option<usize>,
+    /// Accumulated reasoning text
+    pub reasoning_buffer: String,
+    /// Live reasoning header extracted from bold text
+    pub reasoning_header: Option<String>,
+    /// Last completed reasoning block
+    pub last_reasoning: Option<String>,
+    /// Tool calls captured for the pending assistant message
+    pub pending_tool_uses: Vec<(String, String, Value)>,
+    /// User messages queued while a turn is running
+    pub queued_messages: VecDeque<QueuedMessage>,
+    /// Start time for current turn
+    pub turn_started_at: Option<Instant>,
+    /// Last prompt token usage
+    pub last_prompt_tokens: Option<u32>,
+    /// Last completion token usage
+    pub last_completion_tokens: Option<u32>,
 }
 
+/// Message queued while the engine is busy.
+#[derive(Debug, Clone)]
+pub struct QueuedMessage {
+    pub display: String,
+    pub content: String,
+}
+
+// === Errors ===
+
+/// Errors that can occur while submitting API keys during onboarding.
+#[derive(Debug, Error)]
+pub enum ApiKeyError {
+    /// The provided API key was empty.
+    #[error("Failed to save API key: API key cannot be empty")]
+    Empty,
+    /// Persisting the API key failed.
+    #[error("Failed to save API key: {source}")]
+    SaveFailed { source: anyhow::Error },
+}
+
+// === App State ===
+
 impl App {
+    #[allow(clippy::too_many_lines)]
     pub fn new(options: TuiOptions, config: &Config) -> Self {
+        let TuiOptions {
+            model,
+            workspace,
+            allow_shell,
+            max_subagents,
+            skills_dir: global_skills_dir,
+            memory_path: _,
+            notes_path: _,
+            mcp_config_path: _,
+            use_memory: _,
+            start_in_agent_mode,
+            yolo,
+            resume_session_id: _,
+        } = options;
         // Check if API key exists
         let needs_onboarding = !has_api_key(config);
 
         // Start in agent mode if --yolo flag was passed
-        let initial_mode = if options.start_in_agent_mode {
+        let initial_mode = if start_in_agent_mode {
             AppMode::Agent
         } else {
             AppMode::Normal
         };
 
-        let messages = if needs_onboarding {
+        let history = if needs_onboarding {
             Vec::new() // No welcome message during onboarding
         } else {
-            let mode_msg = if options.start_in_agent_mode {
+            let mode_msg = if start_in_agent_mode {
                 " | YOLO MODE (agent + shell enabled)"
             } else {
                 ""
             };
-            vec![ChatMessage::system(&format!(
-                "Welcome to MiniMax! Model: {} | Workspace: {}{}",
-                options.model,
-                options.workspace.display(),
-                mode_msg
-            ))]
+            vec![HistoryCell::System {
+                content: format!(
+                    "Welcome to MiniMax! Model: {} | Workspace: {}{}",
+                    model,
+                    workspace.display(),
+                    mode_msg
+                ),
+            }]
+        };
+
+        // Initialize hooks executor from config
+        let hooks_config = config.hooks_config();
+        let hooks = HookExecutor::new(hooks_config, workspace.clone());
+
+        // Initialize plan state
+        let plan_state = new_shared_plan_state();
+
+        let history_len = history.len() as u64;
+
+        let local_skills_dir = workspace.join("skills");
+        let skills_dir = if local_skills_dir.exists() {
+            local_skills_dir
+        } else {
+            global_skills_dir
         };
 
         Self {
             mode: initial_mode,
             input: String::new(),
             cursor_position: 0,
-            messages,
+            history,
+            history_version: history_len,
             api_messages: Vec::new(),
-            scroll_offset: 0,
+            transcript_scroll: TranscriptScroll::ToBottom,
+            pending_scroll_delta: 0,
+            mouse_scroll: MouseScrollState::new(),
+            transcript_cache: TranscriptViewCache::new(),
+            transcript_selection: TranscriptSelection::default(),
+            last_transcript_area: None,
+            last_scrollbar_area: None,
+            last_transcript_top: 0,
+            last_transcript_visible: 0,
+            last_transcript_total: 0,
             is_loading: false,
             status_message: None,
-            model: options.model,
-            workspace: options.workspace,
+            model,
+            workspace,
+            skills_dir,
             system_prompt: None,
             input_history: Vec::new(),
             history_index: None,
@@ -193,17 +302,53 @@ impl App {
             auto_compact: false,
             compact_threshold: 50000,
             total_tokens: 0,
-            allow_shell: options.allow_shell,
-            onboarding: if needs_onboarding { OnboardingState::Welcome } else { OnboardingState::None },
+            allow_shell,
+            max_subagents,
+            onboarding: if needs_onboarding {
+                OnboardingState::Welcome
+            } else {
+                OnboardingState::None
+            },
             api_key_input: String::new(),
             api_key_cursor: 0,
+            hooks,
+            yolo,
+            clipboard: ClipboardHandler::new(),
+            approval_state: ApprovalState::new(),
+            approval_mode: if yolo {
+                ApprovalMode::Auto
+            } else {
+                ApprovalMode::Suggest
+            },
+            current_session_id: None,
+            trust_mode: false,
+            project_doc: None,
+            plan_state,
+            todos: new_shared_todo_list(),
+            tool_log: Vec::new(),
+            session_cost: 0.0,
+            active_skill: None,
+            tool_cells: HashMap::new(),
+            exploring_cell: None,
+            exploring_entries: HashMap::new(),
+            ignored_tool_calls: HashSet::new(),
+            last_exec_wait_command: None,
+            streaming_message_index: None,
+            reasoning_buffer: String::new(),
+            reasoning_header: None,
+            last_reasoning: None,
+            pending_tool_uses: Vec::new(),
+            queued_messages: VecDeque::new(),
+            turn_started_at: None,
+            last_prompt_tokens: None,
+            last_completion_tokens: None,
         }
     }
 
-    pub fn submit_api_key(&mut self) -> Result<PathBuf, String> {
+    pub fn submit_api_key(&mut self) -> Result<PathBuf, ApiKeyError> {
         let key = self.api_key_input.trim().to_string();
         if key.is_empty() {
-            return Err("API key cannot be empty".to_string());
+            return Err(ApiKeyError::Empty);
         }
 
         match save_api_key(&key) {
@@ -212,14 +357,16 @@ impl App {
                 self.api_key_input.clear();
                 self.api_key_cursor = 0;
                 // Add welcome message after successful setup
-                self.messages.push(ChatMessage::system(&format!(
-                    "Welcome to MiniMax CLI! Model: {} | Workspace: {}",
-                    self.model,
-                    self.workspace.display()
-                )));
+                self.add_message(HistoryCell::System {
+                    content: format!(
+                        "Welcome to MiniMax CLI! Model: {} | Workspace: {}",
+                        self.model,
+                        self.workspace.display()
+                    ),
+                });
                 Ok(path)
             }
-            Err(e) => Err(format!("Failed to save API key: {}", e))
+            Err(source) => Err(ApiKeyError::SaveFailed { source }),
         }
     }
 
@@ -228,25 +375,98 @@ impl App {
     }
 
     pub fn set_mode(&mut self, mode: AppMode) {
+        let previous_mode = self.mode;
         self.mode = mode;
         self.status_message = Some(format!("Switched to {} mode", mode.label()));
+
+        // Execute mode change hooks
+        let context = HookContext::new()
+            .with_mode(mode.label())
+            .with_previous_mode(previous_mode.label())
+            .with_workspace(self.workspace.clone())
+            .with_model(&self.model);
+        let _ = self.hooks.execute(HookEvent::ModeChange, &context);
     }
 
-    pub fn add_message(&mut self, msg: ChatMessage) {
-        self.messages.push(msg);
-        self.scroll_to_bottom();
+    /// Cycle through modes: Normal → Agent → RLM → Plan → Normal
+    pub fn cycle_mode(&mut self) {
+        let next = match self.mode {
+            AppMode::Normal => AppMode::Agent,
+            AppMode::Agent => AppMode::Rlm,
+            AppMode::Rlm => AppMode::Plan,
+            AppMode::Plan | AppMode::Edit => AppMode::Normal,
+        };
+        self.set_mode(next);
+    }
+
+    /// Execute hooks for a specific event with the given context
+    pub fn execute_hooks(&self, event: HookEvent, context: &HookContext) -> Vec<HookResult> {
+        self.hooks.execute(event, context)
+    }
+
+    /// Create a hook context with common fields pre-populated
+    pub fn base_hook_context(&self) -> HookContext {
+        HookContext::new()
+            .with_mode(self.mode.label())
+            .with_workspace(self.workspace.clone())
+            .with_model(&self.model)
+            .with_session_id(self.hooks.session_id())
+            .with_tokens(self.total_tokens)
+    }
+
+    pub fn add_message(&mut self, msg: HistoryCell) {
+        self.history.push(msg);
+        self.history_version = self.history_version.wrapping_add(1);
+        if matches!(self.transcript_scroll, TranscriptScroll::ToBottom)
+            && !self.transcript_selection.dragging
+        {
+            self.scroll_to_bottom();
+        }
+    }
+
+    pub fn mark_history_updated(&mut self) {
+        self.history_version = self.history_version.wrapping_add(1);
+    }
+
+    /// Paste from clipboard into input
+    pub fn paste_from_clipboard(&mut self) {
+        if let Some(content) = self.clipboard.read(self.workspace.as_path()) {
+            match content {
+                ClipboardContent::Text(text) => {
+                    // Insert text at cursor position
+                    for c in text.chars() {
+                        if c != '\n' && c != '\r' {
+                            self.input.insert(self.cursor_position, c);
+                            self.cursor_position += 1;
+                        }
+                    }
+                }
+                ClipboardContent::Image { path, description } => {
+                    // Insert image path reference
+                    let reference = format!("[Image: {} at {}]", description, path.display());
+                    for c in reference.chars() {
+                        self.input.insert(self.cursor_position, c);
+                        self.cursor_position += 1;
+                    }
+                    self.status_message = Some(format!("Pasted image: {}", path.display()));
+                }
+            }
+        }
     }
 
     pub fn scroll_up(&mut self, amount: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_add(amount);
+        let delta = i32::try_from(amount).unwrap_or(i32::MAX);
+        self.pending_scroll_delta = self.pending_scroll_delta.saturating_sub(delta);
     }
 
     pub fn scroll_down(&mut self, amount: usize) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(amount);
+        let delta = i32::try_from(amount).unwrap_or(i32::MAX);
+        self.pending_scroll_delta = self.pending_scroll_delta.saturating_add(delta);
     }
 
     pub fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = 0;
+        self.transcript_scroll = TranscriptScroll::ToBottom;
+        self.pending_scroll_delta = 0;
     }
 
     pub fn insert_char(&mut self, c: char) {
@@ -303,6 +523,37 @@ impl App {
         Some(input)
     }
 
+    pub fn queue_message(&mut self, display: String, content: String) {
+        self.queued_messages
+            .push_back(QueuedMessage { display, content });
+    }
+
+    pub fn pop_queued_message(&mut self) -> Option<QueuedMessage> {
+        self.queued_messages.pop_front()
+    }
+
+    pub fn queued_message_previews(&self, max: usize) -> Vec<String> {
+        if max == 0 {
+            return Vec::new();
+        }
+
+        let mut previews: Vec<String> = self
+            .queued_messages
+            .iter()
+            .take(max)
+            .map(|msg| msg.display.clone())
+            .collect();
+        let extra = self.queued_messages.len().saturating_sub(previews.len());
+        if extra > 0 {
+            previews.push(format!("+{extra} more"));
+        }
+        previews
+    }
+
+    pub fn queued_message_count(&self) -> usize {
+        self.queued_messages.len()
+    }
+
     pub fn history_up(&mut self) {
         if self.input_history.is_empty() {
             return;
@@ -339,92 +590,23 @@ impl App {
         self.show_help = !self.show_help;
     }
 
-    pub fn handle_command(&mut self, cmd: &str) -> Option<AppAction> {
-        let parts: Vec<&str> = cmd.trim().splitn(2, ' ').collect();
-        let command = parts[0].to_lowercase();
-        let arg = parts.get(1).map(|s| s.trim());
-
-        match command.as_str() {
-            "/exit" | "/quit" | "/q" => Some(AppAction::Quit),
-            "/clear" => {
-                self.messages.clear();
-                self.api_messages.clear();
-                self.status_message = Some("Conversation cleared".to_string());
-                None
-            }
-            "/help" | "/?" => {
-                self.show_help = true;
-                None
-            }
-            "/mode" => {
-                if let Some(mode_str) = arg {
-                    match mode_str.to_lowercase().as_str() {
-                        "normal" | "n" => self.set_mode(AppMode::Normal),
-                        "edit" | "e" => self.set_mode(AppMode::Edit),
-                        "agent" | "a" => self.set_mode(AppMode::Agent),
-                        "plan" | "p" => self.set_mode(AppMode::Plan),
-                        "rlm" | "r" => self.set_mode(AppMode::Rlm),
-                        _ => {
-                            self.status_message =
-                                Some("Unknown mode. Use: normal, edit, agent, plan, rlm".to_string());
-                        }
-                    }
-                } else {
-                    self.status_message = Some(format!("Current mode: {}", self.mode.label()));
-                }
-                None
-            }
-            "/compact" => {
-                self.auto_compact = !self.auto_compact;
-                self.status_message = Some(format!(
-                    "Auto-compact: {}",
-                    if self.auto_compact { "ON" } else { "OFF" }
-                ));
-                None
-            }
-            "/model" => {
-                if let Some(model) = arg {
-                    self.model = model.to_string();
-                    self.status_message = Some(format!("Model set to: {}", model));
-                } else {
-                    self.status_message = Some(format!("Current model: {}", self.model));
-                }
-                None
-            }
-            "/save" => {
-                if let Some(path) = arg {
-                    Some(AppAction::SaveSession(PathBuf::from(path)))
-                } else {
-                    self.status_message = Some("Usage: /save <path>".to_string());
-                    None
-                }
-            }
-            "/load" => {
-                if let Some(path) = arg {
-                    Some(AppAction::LoadSession(PathBuf::from(path)))
-                } else {
-                    self.status_message = Some("Usage: /load <path>".to_string());
-                    None
-                }
-            }
-            "/yolo" => {
-                self.allow_shell = true;
-                self.set_mode(AppMode::Agent);
-                self.status_message = Some("YOLO mode enabled - shell execution allowed!".to_string());
-                None
-            }
-            _ => {
-                self.status_message = Some(format!("Unknown command: {}. Type /help for commands.", command));
-                None
-            }
+    pub fn clear_todos(&mut self) {
+        if let Ok(mut plan) = self.plan_state.lock() {
+            *plan = crate::tools::plan::PlanState::default();
         }
     }
 }
 
+// === Actions ===
+
+/// Actions emitted by the UI event loop.
+#[derive(Debug, Clone)]
 pub enum AppAction {
     Quit,
+    #[allow(dead_code)] // For explicit /save command
     SaveSession(PathBuf),
+    #[allow(dead_code)] // For explicit /load command
     LoadSession(PathBuf),
-    #[allow(dead_code)]
     SendMessage(String),
+    ListSubAgents,
 }

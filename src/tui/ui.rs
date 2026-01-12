@@ -1,334 +1,777 @@
-use super::app::{App, AppAction, AppMode, ChatMessage, OnboardingState, TuiOptions};
-use crate::client::AnthropicClient;
-use crate::config::Config;
-use crate::models::{ContentBlock, Message, MessageRequest};
+//! TUI event loop and rendering logic for `MiniMax` CLI.
+
+use std::fmt::Write;
+use std::io::{self, Stdout};
+use std::path::PathBuf;
+use std::time::Instant;
+
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
-    Frame, Terminal,
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use serde_json::json;
-use std::io::{self, Stdout};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+use crate::commands;
+use crate::config::Config;
+use crate::core::engine::{EngineConfig, EngineHandle, spawn_engine};
+use crate::core::events::Event as EngineEvent;
+use crate::core::ops::Op;
+use crate::hooks::HookEvent;
+use crate::models::{ContentBlock, Message, context_window_for_model};
+use crate::session_manager::{SessionManager, create_saved_session, update_session};
+use crate::tools::spec::{ToolError, ToolResult};
+use crate::tools::subagent::{SubAgentResult, SubAgentStatus};
+use crate::tui::scrolling::{ScrollDirection, TranscriptScroll};
+use crate::tui::selection::TranscriptSelectionPoint;
+
+use super::app::{App, AppAction, AppMode, OnboardingState, QueuedMessage, TuiOptions};
+use super::approval::{ApprovalRequest, render_approval_overlay};
+use super::history::{
+    ExecCell, ExecSource, ExploringCell, ExploringEntry, GenericToolCell, HistoryCell, McpToolCell,
+    PatchSummaryCell, PlanStep, PlanUpdateCell, ToolCell, ToolStatus, ViewImageCell, WebSearchCell,
+    extract_reasoning_summary, history_cells_from_message, summarize_mcp_output,
+    summarize_tool_args, summarize_tool_output,
+};
+
+// === Constants ===
 
 const MINIMAX_RED: Color = Color::Rgb(220, 80, 80);
 const MINIMAX_CORAL: Color = Color::Rgb(240, 128, 100);
 const MINIMAX_ORANGE: Color = Color::Rgb(255, 165, 80);
+const MAX_QUEUED_PREVIEW: usize = 3;
 
-const LOGO: &str = r#"
+// ASCII logo for onboarding screen only
+const LOGO: &str = r"
  ███╗   ███╗██╗███╗   ██╗██╗███╗   ███╗ █████╗ ██╗  ██╗
  ████╗ ████║██║████╗  ██║██║████╗ ████║██╔══██╗╚██╗██╔╝
  ██╔████╔██║██║██╔██╗ ██║██║██╔████╔██║███████║ ╚███╔╝
  ██║╚██╔╝██║██║██║╚██╗██║██║██║╚██╔╝██║██╔══██║ ██╔██╗
  ██║ ╚═╝ ██║██║██║ ╚████║██║██║ ╚═╝ ██║██║  ██║██╔╝ ██╗
  ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
-"#;
+";
 
-const LOGO_SMALL: &str = "MiniMax CLI";
-
-fn mode_color(mode: AppMode) -> Color {
-    match mode {
-        AppMode::Normal => Color::Green,
-        AppMode::Edit => Color::Yellow,
-        AppMode::Agent => Color::Cyan,
-        AppMode::Plan => Color::Magenta,
-        AppMode::Rlm => MINIMAX_CORAL,
-    }
-}
-
+/// Run the interactive TUI event loop.
+///
+/// # Examples
+///
+/// ```ignore
+/// # use crate::config::Config;
+/// # use crate::tui::TuiOptions;
+/// # async fn example(config: &Config, options: TuiOptions) -> anyhow::Result<()> {
+/// crate::tui::run_tui(config, options).await
+/// # }
+/// ```
 pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableMouseCapture
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(options, config);
-    let result = run_event_loop(&mut terminal, &mut app, config).await;
+    let mut app = App::new(options.clone(), config);
+
+    // Load existing session if resuming
+    if let Some(ref session_id) = options.resume_session_id
+        && let Ok(manager) = SessionManager::default_location()
+    {
+        // Try to load by prefix or full ID
+        let load_result: std::io::Result<Option<crate::session_manager::SavedSession>> =
+            if session_id == "latest" {
+                // Special case: resume the most recent session
+                match manager.get_latest_session() {
+                    Ok(Some(meta)) => manager.load_session(&meta.id).map(Some),
+                    Ok(None) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            } else {
+                manager.load_session_by_prefix(session_id).map(Some)
+            };
+
+        match load_result {
+            Ok(Some(saved)) => {
+                app.api_messages.clone_from(&saved.messages);
+                app.model.clone_from(&saved.metadata.model);
+                app.current_session_id = Some(saved.metadata.id.clone());
+                app.total_tokens = u32::try_from(saved.metadata.total_tokens).unwrap_or(u32::MAX);
+                // Convert saved messages to HistoryCell format for display
+                app.history.clear();
+                app.history.push(HistoryCell::System {
+                    content: format!(
+                        "Resumed session: {} ({})",
+                        saved.metadata.title,
+                        &saved.metadata.id[..8]
+                    ),
+                });
+                for msg in &saved.messages {
+                    app.history.extend(history_cells_from_message(msg));
+                }
+                app.mark_history_updated();
+                app.status_message = Some(format!("Resumed session: {}", &saved.metadata.id[..8]));
+            }
+            Ok(None) => {
+                app.status_message = Some("No sessions found to resume".to_string());
+            }
+            Err(e) => {
+                app.status_message = Some(format!("Failed to load session: {e}"));
+            }
+        }
+    }
+
+    // Create the Engine with configuration from TuiOptions
+    let engine_config = EngineConfig {
+        model: app.model.clone(),
+        workspace: app.workspace.clone(),
+        allow_shell: app.allow_shell,
+        trust_mode: options.yolo,
+        notes_path: app.workspace.join("notes.txt"),
+        mcp_config_path: app.workspace.join("mcp.json"),
+        max_steps: 100,
+        max_subagents: app.max_subagents,
+    };
+
+    // Spawn the Engine - it will handle all API communication
+    let engine_handle = spawn_engine(engine_config, config);
+
+    // Fire session start hook
+    {
+        let context = app.base_hook_context();
+        let _ = app.execute_hooks(HookEvent::SessionStart, &context);
+    }
+
+    let result = run_event_loop(&mut terminal, &mut app, config, engine_handle).await;
+
+    // Fire session end hook
+    {
+        let context = app.base_hook_context();
+        let _ = app.execute_hooks(HookEvent::SessionEnd, &context);
+    }
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableBracketedPaste,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     result
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut App,
-    config: &Config,
+    _config: &Config,
+    engine_handle: EngineHandle,
 ) -> Result<()> {
-    // Track if we need to reload config after onboarding
-    let mut config_with_key = config.clone();
+    // Track streaming state
+    let mut current_streaming_text = String::new();
 
     loop {
-        terminal.draw(|f| render(f, app))?;
+        // First, poll for engine events (non-blocking)
+        let mut queued_to_send: Option<QueuedMessage> = None;
+        {
+            let mut rx = engine_handle.rx_event.write().await;
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    EngineEvent::MessageStarted { .. } => {
+                        current_streaming_text.clear();
+                        app.streaming_message_index = None;
+                    }
+                    EngineEvent::MessageDelta { content, .. } => {
+                        current_streaming_text.push_str(&content);
+                        let index = if let Some(index) = app.streaming_message_index {
+                            index
+                        } else {
+                            app.add_message(HistoryCell::Assistant {
+                                content: String::new(),
+                                streaming: true,
+                            });
+                            let index = app.history.len().saturating_sub(1);
+                            app.streaming_message_index = Some(index);
+                            index
+                        };
 
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+                        if let Some(HistoryCell::Assistant { content, .. }) =
+                            app.history.get_mut(index)
+                        {
+                            content.clone_from(&current_streaming_text);
+                            app.mark_history_updated();
+                        }
+                    }
+                    EngineEvent::MessageComplete { .. } => {
+                        if let Some(index) = app.streaming_message_index.take()
+                            && let Some(HistoryCell::Assistant { streaming, .. }) =
+                                app.history.get_mut(index)
+                        {
+                            *streaming = false;
+                            app.mark_history_updated();
+                        }
+
+                        if !current_streaming_text.is_empty()
+                            || app.last_reasoning.is_some()
+                            || !app.pending_tool_uses.is_empty()
+                        {
+                            let mut blocks = Vec::new();
+                            if let Some(thinking) = app.last_reasoning.take() {
+                                blocks.push(ContentBlock::Thinking { thinking });
+                            }
+                            if !current_streaming_text.is_empty() {
+                                blocks.push(ContentBlock::Text {
+                                    text: current_streaming_text.clone(),
+                                    cache_control: None,
+                                });
+                            }
+                            for (id, name, input) in app.pending_tool_uses.drain(..) {
+                                blocks.push(ContentBlock::ToolUse { id, name, input });
+                            }
+                            if !blocks.is_empty() {
+                                app.api_messages.push(Message {
+                                    role: "assistant".to_string(),
+                                    content: blocks,
+                                });
+                            }
+                        }
+                    }
+                    EngineEvent::ThinkingStarted { .. } => {
+                        app.reasoning_buffer.clear();
+                        app.reasoning_header = None;
+                    }
+                    EngineEvent::ThinkingDelta { content, .. } => {
+                        app.reasoning_buffer.push_str(&content);
+                        if app.reasoning_header.is_none() {
+                            app.reasoning_header = extract_reasoning_header(&app.reasoning_buffer);
+                        }
+                    }
+                    EngineEvent::ThinkingComplete { .. } => {
+                        if let Some(summary) = extract_reasoning_summary(&app.reasoning_buffer) {
+                            app.add_message(HistoryCell::ThinkingSummary { summary });
+                        }
+                        if !app.reasoning_buffer.is_empty() {
+                            app.last_reasoning = Some(app.reasoning_buffer.clone());
+                        }
+                        app.reasoning_buffer.clear();
+                    }
+                    EngineEvent::ToolCallStarted { id, name, input } => {
+                        app.pending_tool_uses
+                            .push((id.clone(), name.clone(), input.clone()));
+                        handle_tool_call_started(app, &id, &name, &input);
+                    }
+                    EngineEvent::ToolCallComplete { id, name, result } => {
+                        let tool_content = match &result {
+                            Ok(output) => output.content.clone(),
+                            Err(err) => format!("Error: {err}"),
+                        };
+                        app.api_messages.push(Message {
+                            role: "user".to_string(),
+                            content: vec![ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: tool_content,
+                            }],
+                        });
+                        handle_tool_call_complete(app, &id, &name, &result);
+                    }
+                    EngineEvent::TurnStarted => {
+                        app.is_loading = true;
+                        current_streaming_text.clear();
+                        app.turn_started_at = Some(Instant::now());
+                        app.reasoning_buffer.clear();
+                        app.reasoning_header = None;
+                        app.last_reasoning = None;
+                        app.pending_tool_uses.clear();
+                    }
+                    EngineEvent::TurnComplete { usage } => {
+                        app.is_loading = false;
+                        app.turn_started_at = None;
+                        app.total_tokens += usage.input_tokens + usage.output_tokens;
+                        app.last_prompt_tokens = Some(usage.input_tokens);
+                        app.last_completion_tokens = Some(usage.output_tokens);
+
+                        // Auto-save session after each turn
+                        if let Ok(manager) = SessionManager::default_location() {
+                            let session = if let Some(ref existing_id) = app.current_session_id {
+                                // Update existing session
+                                if let Ok(existing) = manager.load_session(existing_id) {
+                                    update_session(
+                                        existing,
+                                        &app.api_messages,
+                                        u64::from(app.total_tokens),
+                                    )
+                                } else {
+                                    // Session was deleted, create new
+                                    create_saved_session(
+                                        &app.api_messages,
+                                        &app.model,
+                                        &app.workspace,
+                                        u64::from(app.total_tokens),
+                                        None,
+                                    )
+                                }
+                            } else {
+                                // Create new session
+                                create_saved_session(
+                                    &app.api_messages,
+                                    &app.model,
+                                    &app.workspace,
+                                    u64::from(app.total_tokens),
+                                    None,
+                                )
+                            };
+
+                            if let Err(e) = manager.save_session(&session) {
+                                eprintln!("Failed to save session: {e}");
+                            } else {
+                                app.current_session_id = Some(session.metadata.id.clone());
+                            }
+                        }
+
+                        if queued_to_send.is_none() {
+                            queued_to_send = app.pop_queued_message();
+                        }
+                    }
+                    EngineEvent::Error { message, .. } => {
+                        app.add_message(HistoryCell::System {
+                            content: format!("Error: {message}"),
+                        });
+                        app.is_loading = false;
+                    }
+                    EngineEvent::Status { message } => {
+                        app.status_message = Some(message);
+                    }
+                    EngineEvent::AgentSpawned { id, prompt } => {
+                        app.add_message(HistoryCell::System {
+                            content: format!(
+                                "Sub-agent {id} spawned: {}",
+                                summarize_tool_output(&prompt)
+                            ),
+                        });
+                    }
+                    EngineEvent::AgentProgress { id, status } => {
+                        app.status_message = Some(format!("Sub-agent {id}: {status}"));
+                    }
+                    EngineEvent::AgentComplete { id, result } => {
+                        app.add_message(HistoryCell::System {
+                            content: format!(
+                                "Sub-agent {id} completed: {}",
+                                summarize_tool_output(&result)
+                            ),
+                        });
+                    }
+                    EngineEvent::AgentList { agents } => {
+                        app.add_message(HistoryCell::System {
+                            content: format_subagent_list(&agents),
+                        });
+                    }
+                    EngineEvent::ApprovalRequired {
+                        id,
+                        tool_name,
+                        description,
+                    } => {
+                        // Create approval request and show overlay
+                        let request = ApprovalRequest::new(&id, &tool_name, &serde_json::json!({}));
+                        app.approval_state.request(request);
+                        app.add_message(HistoryCell::System {
+                            content: format!(
+                                "Approval required for tool '{tool_name}': {description}"
+                            ),
+                        });
+                    }
+                    EngineEvent::ToolCallProgress { id, output } => {
+                        app.status_message =
+                            Some(format!("Tool {id}: {}", summarize_tool_output(&output)));
+                    }
                 }
+            }
+        }
 
-                // Handle onboarding flow
-                if app.onboarding != OnboardingState::None {
-                    match key.code {
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            return Ok(());
-                        }
-                        KeyCode::Esc => {
-                            if app.onboarding == OnboardingState::EnteringKey {
-                                app.onboarding = OnboardingState::Welcome;
-                                app.api_key_input.clear();
-                                app.api_key_cursor = 0;
-                            }
-                        }
-                        KeyCode::Enter => {
-                            match app.onboarding {
-                                OnboardingState::Welcome => {
-                                    app.onboarding = OnboardingState::EnteringKey;
-                                }
-                                OnboardingState::EnteringKey => {
-                                    match app.submit_api_key() {
-                                        Ok(path) => {
-                                            app.status_message = Some(format!("API key saved to {}", path.display()));
-                                            // Reload config with new API key
-                                            if let Ok(new_config) = crate::config::Config::load(None, None) {
-                                                config_with_key = new_config;
-                                            }
-                                        }
-                                        Err(e) => {
-                                            app.status_message = Some(e);
-                                        }
-                                    }
-                                }
-                                OnboardingState::Success => {
-                                    app.finish_onboarding();
-                                }
-                                OnboardingState::None => {}
-                            }
-                        }
-                        KeyCode::Backspace if app.onboarding == OnboardingState::EnteringKey => {
-                            if app.api_key_cursor > 0 {
-                                app.api_key_cursor -= 1;
-                                app.api_key_input.remove(app.api_key_cursor);
-                            }
-                        }
-                        KeyCode::Char(c) if app.onboarding == OnboardingState::EnteringKey => {
+        if let Some(next) = queued_to_send {
+            dispatch_user_message(app, &engine_handle, next).await?;
+        }
+
+        terminal.draw(|f| render(f, app))?; // app is &mut
+
+        if event::poll(std::time::Duration::from_millis(50))? {
+            let evt = event::read()?;
+
+            // Handle bracketed paste events
+            if let Event::Paste(text) = &evt {
+                if app.onboarding == OnboardingState::EnteringKey {
+                    // Paste into API key input
+                    for c in text.chars() {
+                        if !c.is_control() {
                             app.api_key_input.insert(app.api_key_cursor, c);
                             app.api_key_cursor += 1;
                         }
-                        KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) && app.onboarding == OnboardingState::EnteringKey => {
-                            // Note: Ctrl+V paste doesn't work in raw terminal mode
-                            // User needs to use terminal's paste (Cmd+V / right-click)
+                    }
+                } else {
+                    // Paste into main input
+                    for c in text.chars() {
+                        if c != '\n' && c != '\r' {
+                            app.input.insert(app.cursor_position, c);
+                            app.cursor_position += 1;
                         }
-                        _ => {}
                     }
-                    continue;
                 }
+                continue;
+            }
 
-                // Handle help popup
-                if app.show_help {
-                    if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter) {
-                        app.show_help = false;
-                    }
-                    continue;
-                }
+            if let Event::Mouse(mouse) = evt {
+                handle_mouse_event(app, mouse);
+                continue;
+            }
 
-                // Global keybindings
+            let Event::Key(key) = evt else {
+                continue;
+            };
+
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+
+            // Handle onboarding flow
+            if app.onboarding != OnboardingState::None {
                 match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        let _ = engine_handle.send(Op::Shutdown).await;
                         return Ok(());
                     }
-                    KeyCode::F(1) => {
-                        app.toggle_help();
-                    }
                     KeyCode::Esc => {
-                        if !app.input.is_empty() {
-                            app.clear_input();
-                        } else {
-                            app.set_mode(AppMode::Normal);
+                        if app.onboarding == OnboardingState::EnteringKey {
+                            app.onboarding = OnboardingState::Welcome;
+                            app.api_key_input.clear();
+                            app.api_key_cursor = 0;
                         }
                     }
-                    KeyCode::Up if key.modifiers.contains(KeyModifiers::ALT) => {
-                        app.scroll_up(3);
-                    }
-                    KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => {
-                        app.scroll_down(3);
-                    }
-                    KeyCode::PageUp => {
-                        app.scroll_up(10);
-                    }
-                    KeyCode::PageDown => {
-                        app.scroll_down(10);
-                    }
-                    // Input handling
-                    KeyCode::Enter => {
-                        if let Some(input) = app.submit_input() {
-                            if input.starts_with('/') {
-                                match app.handle_command(&input) {
-                                    Some(AppAction::Quit) => return Ok(()),
-                                    Some(AppAction::SaveSession(path)) => {
-                                        app.status_message = Some(format!("Session saved to {}", path.display()));
-                                    }
-                                    Some(AppAction::LoadSession(path)) => {
-                                        app.status_message = Some(format!("Session loaded from {}", path.display()));
-                                    }
-                                    Some(AppAction::SendMessage(_)) | None => {}
-                                }
-                            } else {
-                                app.add_message(ChatMessage::user(&input));
-                                app.is_loading = true;
-
-                                // Create client on demand (lazy)
-                                match AnthropicClient::new(&config_with_key) {
-                                    Ok(client) => {
-                                        match send_message(&client, app, &input).await {
-                                            Ok(response) => {
-                                                for msg in response {
-                                                    app.add_message(msg);
-                                                }
-                                            }
-                                            Err(e) => {
-                                                app.add_message(ChatMessage::system(&format!("Error: {}", e)));
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        app.add_message(ChatMessage::system(&format!(
-                                            "API key not configured. Set MINIMAX_API_KEY or edit ~/.minimax/config.toml\n\nError: {}",
-                                            e
-                                        )));
-                                    }
-                                }
-                                app.is_loading = false;
+                    KeyCode::Enter => match app.onboarding {
+                        OnboardingState::Welcome => {
+                            app.onboarding = OnboardingState::EnteringKey;
+                        }
+                        OnboardingState::EnteringKey => match app.submit_api_key() {
+                            Ok(path) => {
+                                app.status_message =
+                                    Some(format!("API key saved to {}", path.display()));
                             }
+                            Err(e) => {
+                                app.status_message = Some(e.to_string());
+                            }
+                        },
+                        OnboardingState::Success => {
+                            app.finish_onboarding();
+                        }
+                        OnboardingState::None => {}
+                    },
+                    KeyCode::Backspace if app.onboarding == OnboardingState::EnteringKey => {
+                        if app.api_key_cursor > 0 {
+                            app.api_key_cursor -= 1;
+                            app.api_key_input.remove(app.api_key_cursor);
                         }
                     }
-                    KeyCode::Backspace => {
-                        app.delete_char();
+                    KeyCode::Char(c) if app.onboarding == OnboardingState::EnteringKey => {
+                        app.api_key_input.insert(app.api_key_cursor, c);
+                        app.api_key_cursor += 1;
                     }
-                    KeyCode::Delete => {
-                        app.delete_char_forward();
-                    }
-                    KeyCode::Left => {
-                        app.move_cursor_left();
-                    }
-                    KeyCode::Right => {
-                        app.move_cursor_right();
-                    }
-                    KeyCode::Home | KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.move_cursor_start();
-                    }
-                    KeyCode::End | KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.move_cursor_end();
-                    }
-                    KeyCode::Up => {
-                        app.history_up();
-                    }
-                    KeyCode::Down => {
-                        app.history_down();
-                    }
-                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.clear_input();
-                    }
-                    KeyCode::Char(c) => {
-                        app.insert_char(c);
+                    KeyCode::Char('v')
+                        if key.modifiers.contains(KeyModifiers::CONTROL)
+                            && app.onboarding == OnboardingState::EnteringKey =>
+                    {
+                        // Ctrl+V handled by bracketed paste above
+                        app.paste_from_clipboard();
                     }
                     _ => {}
                 }
+                continue;
+            }
+
+            // Handle help popup
+            if app.show_help {
+                if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter) {
+                    app.show_help = false;
+                }
+                continue;
+            }
+
+            // Handle approval overlay
+            if app.approval_state.visible {
+                use crate::tui::approval::ReviewDecision;
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.approval_state.select_prev();
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.approval_state.select_next();
+                    }
+                    KeyCode::Enter => {
+                        let decision = app.approval_state.current_decision();
+                        if let Some((tool_id, decision)) =
+                            app.approval_state.apply_decision(decision.clone())
+                        {
+                            match decision {
+                                ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
+                                    let _ = engine_handle
+                                        .send(Op::ApproveToolCall { id: tool_id })
+                                        .await;
+                                }
+                                ReviewDecision::Denied | ReviewDecision::Abort => {
+                                    let _ =
+                                        engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Char('y') => {
+                        if let Some((tool_id, _)) =
+                            app.approval_state.apply_decision(ReviewDecision::Approved)
+                        {
+                            let _ = engine_handle
+                                .send(Op::ApproveToolCall { id: tool_id })
+                                .await;
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        if let Some((tool_id, _)) = app
+                            .approval_state
+                            .apply_decision(ReviewDecision::ApprovedForSession)
+                        {
+                            let _ = engine_handle
+                                .send(Op::ApproveToolCall { id: tool_id })
+                                .await;
+                        }
+                    }
+                    KeyCode::Char('n') => {
+                        if let Some((tool_id, _)) =
+                            app.approval_state.apply_decision(ReviewDecision::Denied)
+                        {
+                            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                        }
+                    }
+                    KeyCode::Esc => {
+                        if let Some((tool_id, _)) =
+                            app.approval_state.apply_decision(ReviewDecision::Abort)
+                        {
+                            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            // Global keybindings
+            match key.code {
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    // Cancel current request or exit
+                    if app.is_loading {
+                        engine_handle.cancel();
+                        app.is_loading = false;
+                        app.status_message = Some("Request cancelled".to_string());
+                    } else {
+                        let _ = engine_handle.send(Op::Shutdown).await;
+                        return Ok(());
+                    }
+                }
+                KeyCode::F(1) => {
+                    app.toggle_help();
+                }
+                KeyCode::Esc => {
+                    if app.is_loading {
+                        engine_handle.cancel();
+                        app.is_loading = false;
+                        app.status_message = Some("Request cancelled".to_string());
+                    } else if !app.input.is_empty() {
+                        app.clear_input();
+                    } else {
+                        app.set_mode(AppMode::Normal);
+                    }
+                }
+                KeyCode::Up if key.modifiers.contains(KeyModifiers::ALT) => {
+                    app.scroll_up(3);
+                }
+                KeyCode::Down if key.modifiers.contains(KeyModifiers::ALT) => {
+                    app.scroll_down(3);
+                }
+                KeyCode::PageUp => {
+                    let page = app.last_transcript_visible.max(1);
+                    app.scroll_up(page);
+                }
+                KeyCode::PageDown => {
+                    let page = app.last_transcript_visible.max(1);
+                    app.scroll_down(page);
+                }
+                KeyCode::Tab => {
+                    app.cycle_mode();
+                }
+                // Input handling
+                KeyCode::Enter => {
+                    if let Some(input) = app.submit_input() {
+                        if input.starts_with('/') {
+                            // Use the commands module for slash commands
+                            let result = commands::execute(&input, app);
+
+                            // Handle command result
+                            if let Some(msg) = result.message {
+                                app.add_message(HistoryCell::System { content: msg });
+                            }
+
+                            if let Some(action) = result.action {
+                                match action {
+                                    AppAction::Quit => {
+                                        let _ = engine_handle.send(Op::Shutdown).await;
+                                        return Ok(());
+                                    }
+                                    AppAction::SaveSession(path) => {
+                                        app.status_message =
+                                            Some(format!("Session saved to {}", path.display()));
+                                    }
+                                    AppAction::LoadSession(path) => {
+                                        app.status_message =
+                                            Some(format!("Session loaded from {}", path.display()));
+                                    }
+                                    AppAction::SendMessage(content) => {
+                                        let queued = build_queued_message(app, content);
+                                        dispatch_user_message(app, &engine_handle, queued).await?;
+                                    }
+                                    AppAction::ListSubAgents => {
+                                        let _ = engine_handle.send(Op::ListSubAgents).await;
+                                    }
+                                }
+                            }
+                        } else {
+                            let queued = build_queued_message(app, input);
+                            if app.is_loading {
+                                app.queue_message(queued.display, queued.content);
+                                app.status_message = Some(format!(
+                                    "Queued {} message(s)",
+                                    app.queued_message_count()
+                                ));
+                            } else {
+                                dispatch_user_message(app, &engine_handle, queued).await?;
+                            }
+                        }
+                    }
+                }
+                KeyCode::Backspace => {
+                    app.delete_char();
+                }
+                KeyCode::Delete => {
+                    app.delete_char_forward();
+                }
+                KeyCode::Left => {
+                    app.move_cursor_left();
+                }
+                KeyCode::Right => {
+                    app.move_cursor_right();
+                }
+                KeyCode::Home if key.modifiers.is_empty() => {
+                    if let Some(anchor) =
+                        TranscriptScroll::anchor_for(app.transcript_cache.line_meta(), 0)
+                    {
+                        app.transcript_scroll = anchor;
+                    }
+                }
+                KeyCode::End if key.modifiers.is_empty() => {
+                    app.scroll_to_bottom();
+                }
+                KeyCode::Home | KeyCode::Char('a')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    app.move_cursor_start();
+                }
+                KeyCode::End | KeyCode::Char('e')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    app.move_cursor_end();
+                }
+                KeyCode::Up => {
+                    app.history_up();
+                }
+                KeyCode::Down => {
+                    app.history_down();
+                }
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.clear_input();
+                }
+                KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    if app.transcript_selection.is_active()
+                        && let Some(text) = selection_to_text(app)
+                    {
+                        if app.clipboard.write_text(&text).is_ok() {
+                            app.status_message = Some("Selection copied".to_string());
+                        } else {
+                            app.status_message = Some("Copy failed".to_string());
+                        }
+                    }
+                }
+                KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.paste_from_clipboard();
+                }
+                KeyCode::Char(c) => {
+                    app.insert_char(c);
+                }
+                _ => {}
             }
         }
     }
 }
 
-async fn send_message(
-    client: &AnthropicClient,
+fn build_queued_message(app: &mut App, input: String) -> QueuedMessage {
+    let content = if let Some(skill_instruction) = app.active_skill.take() {
+        format!("{skill_instruction}\n\n---\n\nUser request: {input}")
+    } else {
+        input.clone()
+    };
+
+    QueuedMessage {
+        display: input,
+        content,
+    }
+}
+
+async fn dispatch_user_message(
     app: &mut App,
-    input: &str,
-) -> Result<Vec<ChatMessage>> {
-    // Add user message to API messages
+    engine_handle: &EngineHandle,
+    message: QueuedMessage,
+) -> Result<()> {
+    app.add_message(HistoryCell::User {
+        content: message.display.clone(),
+    });
     app.api_messages.push(Message {
         role: "user".to_string(),
         content: vec![ContentBlock::Text {
-            text: input.to_string(),
+            text: message.content.clone(),
             cache_control: None,
         }],
     });
 
-    // Build tools based on mode
-    let tools = if matches!(app.mode, AppMode::Agent) {
-        Some(crate::agent::build_agent_tools(app.allow_shell))
-    } else {
-        None
-    };
+    engine_handle
+        .send(Op::SendMessage {
+            content: message.content,
+            mode: app.mode,
+        })
+        .await?;
 
-    let request = MessageRequest {
-        model: app.model.clone(),
-        messages: app.api_messages.clone(),
-        max_tokens: 4096,
-        system: app.system_prompt.clone(),
-        tools,
-        tool_choice: if app.mode == AppMode::Agent {
-            Some(json!({ "type": "auto" }))
-        } else {
-            None
-        },
-        metadata: None,
-        thinking: None,
-        stream: Some(false),
-        temperature: None,
-        top_p: None,
-    };
-
-    let response = client.create_message(request).await?;
-
-    // Update token count
-    app.total_tokens += response.usage.input_tokens + response.usage.output_tokens;
-
-    let mut chat_messages = Vec::new();
-    let mut assistant_text = String::new();
-
-    for block in &response.content {
-        match block {
-            ContentBlock::Thinking { thinking } => {
-                chat_messages.push(ChatMessage::thinking(thinking));
-            }
-            ContentBlock::Text { text, .. } => {
-                assistant_text.push_str(text);
-            }
-            ContentBlock::ToolUse { id: _, name, input } => {
-                chat_messages.push(ChatMessage::tool_call(
-                    name,
-                    &serde_json::to_string_pretty(input).unwrap_or_default(),
-                ));
-            }
-            _ => {}
-        }
-    }
-
-    if !assistant_text.is_empty() {
-        chat_messages.push(ChatMessage::assistant(&assistant_text));
-    }
-
-    // Add assistant message to API messages
-    app.api_messages.push(Message {
-        role: "assistant".to_string(),
-        content: response.content,
-    });
-
-    Ok(chat_messages)
+    Ok(())
 }
 
-fn render(f: &mut Frame, app: &App) {
+fn render(f: &mut Frame, app: &mut App) {
     let size = f.area();
 
     // Show onboarding screen if needed
@@ -337,209 +780,689 @@ fn render(f: &mut Frame, app: &App) {
         return;
     }
 
-    // Main layout
+    let footer_height = 1;
+    let queued_preview = app.queued_message_previews(MAX_QUEUED_PREVIEW);
+    let status_lines = usize::from(app.is_loading);
+    let status_height = u16::try_from(status_lines + queued_preview.len()).unwrap_or(u16::MAX);
+    let composer_height = composer_height(
+        &app.input,
+        size.width,
+        size.height.saturating_sub(footer_height + status_height),
+    );
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(if size.height > 30 { 8 } else { 3 }),  // Header/Logo
-            Constraint::Min(10),                                       // Chat area
-            Constraint::Length(3),                                     // Input
-            Constraint::Length(1),                                     // Status bar
+            Constraint::Min(1),
+            Constraint::Length(status_height),
+            Constraint::Length(composer_height),
+            Constraint::Length(footer_height),
         ])
         .split(size);
 
-    render_header(f, chunks[0], app);
-    render_chat(f, chunks[1], app);
-    render_input(f, chunks[2], app);
-    render_status_bar(f, chunks[3], app);
+    render_chat(f, chunks[0], app);
+    if status_height > 0 {
+        render_status_indicator(f, chunks[1], app, &queued_preview);
+    }
+    render_composer(f, chunks[2], app);
+    render_footer(f, chunks[3], app);
 
     if app.show_help {
         render_help_popup(f, size);
     }
-}
 
-fn render_header(f: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .borders(Borders::BOTTOM)
-        .border_style(Style::default().fg(MINIMAX_RED));
-
-    if area.height >= 8 {
-        // Show full logo
-        let logo_lines: Vec<Line> = LOGO
-            .lines()
-            .enumerate()
-            .map(|(i, line)| {
-                let color = match i % 3 {
-                    0 => MINIMAX_RED,
-                    1 => MINIMAX_CORAL,
-                    _ => MINIMAX_ORANGE,
-                };
-                Line::from(Span::styled(line, Style::default().fg(color).bold()))
-            })
-            .collect();
-
-        let mut lines = logo_lines;
-        lines.push(Line::from(vec![
-            Span::styled("Unofficial CLI ", Style::default().fg(Color::DarkGray)),
-            Span::styled("| ", Style::default().fg(Color::DarkGray)),
-            Span::styled("Not affiliated with MiniMax", Style::default().fg(Color::DarkGray).italic()),
-        ]));
-
-        let paragraph = Paragraph::new(lines).block(block).centered();
-        f.render_widget(paragraph, area);
-    } else {
-        // Show compact header
-        let header = Line::from(vec![
-            Span::styled(LOGO_SMALL, Style::default().fg(MINIMAX_RED).bold()),
-            Span::raw(" "),
-            Span::styled(
-                format!("[{}]", app.mode.label()),
-                Style::default().fg(mode_color(app.mode)).bold(),
-            ),
-            Span::raw(" "),
-            Span::styled(&app.model, Style::default().fg(Color::DarkGray)),
-        ]);
-        let paragraph = Paragraph::new(header).block(block).centered();
-        f.render_widget(paragraph, area);
+    // Render approval overlay if visible
+    if app.approval_state.visible {
+        render_approval_overlay(f, &app.approval_state);
     }
 }
 
-fn render_chat(f: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(Line::from(vec![
-            Span::styled(" Chat ", Style::default().fg(MINIMAX_CORAL).bold()),
-            Span::styled(
-                format!("[{}] ", app.mode.label()),
-                Style::default().fg(mode_color(app.mode)),
-            ),
-        ]))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+fn render_chat(f: &mut Frame, area: Rect, app: &mut App) {
+    let mut content_area = area;
+    let mut scrollbar_area = None;
 
-    let inner = block.inner(area);
+    let show_scrollbar = !matches!(app.transcript_scroll, TranscriptScroll::ToBottom)
+        && area.width > 1
+        && area.height > 1;
+    if show_scrollbar {
+        content_area.width = content_area.width.saturating_sub(1);
+        scrollbar_area = Some(Rect {
+            x: content_area.x + content_area.width,
+            y: content_area.y,
+            width: 1,
+            height: content_area.height,
+        });
+    }
+
+    app.transcript_cache
+        .ensure(&app.history, content_area.width.max(1), app.history_version);
+
+    let total_lines = app.transcript_cache.total_lines();
+    let visible_lines = content_area.height as usize;
+    let line_meta = app.transcript_cache.line_meta();
+
+    if app.pending_scroll_delta != 0 {
+        app.transcript_scroll =
+            app.transcript_scroll
+                .scrolled_by(app.pending_scroll_delta, line_meta, visible_lines);
+        app.pending_scroll_delta = 0;
+    }
+
+    let max_start = total_lines.saturating_sub(visible_lines);
+    let (scroll_state, top) = app.transcript_scroll.resolve_top(line_meta, max_start);
+    app.transcript_scroll = scroll_state;
+
+    app.last_transcript_area = Some(content_area);
+    app.last_scrollbar_area = scrollbar_area;
+    app.last_transcript_top = top;
+    app.last_transcript_visible = visible_lines;
+    app.last_transcript_total = total_lines;
+
+    let end = (top + visible_lines).min(total_lines);
+    let mut visible = if total_lines == 0 {
+        vec![Line::from("")]
+    } else {
+        app.transcript_cache.lines()[top..end].to_vec()
+    };
+
+    apply_selection(&mut visible, top, app);
+
+    let paragraph = Paragraph::new(visible);
+    f.render_widget(paragraph, content_area);
+
+    if let Some(scrollbar_area) = scrollbar_area {
+        render_scrollbar(f, scrollbar_area, top, visible_lines, total_lines);
+    }
+}
+
+fn render_status_indicator(f: &mut Frame, area: Rect, app: &App, queued: &[String]) {
+    let mut lines = Vec::new();
+
+    if app.is_loading {
+        let header = app.reasoning_header.clone();
+        let elapsed = app.turn_started_at.map(format_elapsed);
+        let spinner = minimax_squiggle(app.turn_started_at);
+        let label = minimax_thinking_label(app.turn_started_at);
+        let mut spans = vec![
+            Span::styled(spinner, Style::default().fg(MINIMAX_CORAL).bold()),
+            Span::raw(" "),
+            Span::styled(label, Style::default().fg(Color::Yellow).bold()),
+        ];
+        if let Some(header) = header {
+            spans.push(Span::raw(": "));
+            spans.push(Span::styled(header, Style::default().fg(Color::Yellow)));
+        }
+
+        if let Some(elapsed) = elapsed {
+            spans.push(Span::raw(" | "));
+            spans.push(Span::styled(elapsed, Style::default().fg(Color::DarkGray)));
+        }
+
+        spans.push(Span::raw(" | "));
+        spans.push(Span::styled(
+            "Esc/Ctrl+C to interrupt",
+            Style::default().fg(Color::DarkGray),
+        ));
+
+        lines.push(Line::from(spans));
+    }
+
+    if !queued.is_empty() {
+        let available = area.width as usize;
+        let prefix = "Queued:";
+        let prefix_width = prefix.width() + 1;
+        let max_len = available.saturating_sub(prefix_width).max(1);
+
+        for message in queued {
+            let preview = truncate_line_to_width(message, max_len);
+            lines.push(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(preview, Style::default().fg(Color::Gray)),
+            ]));
+        }
+    }
+
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    f.render_widget(paragraph, area);
+}
+
+fn render_composer(f: &mut Frame, area: Rect, app: &mut App) {
+    let prompt = "> ";
+    let prompt_width = prompt.width();
+    let prompt_width_u16 = u16::try_from(prompt_width).unwrap_or(u16::MAX);
+    let content_width = usize::from(area.width.saturating_sub(prompt_width_u16).max(1));
+    let max_height = usize::from(area.height);
+
+    let (visible_lines, cursor_row, cursor_col) =
+        layout_input(&app.input, app.cursor_position, content_width, max_height);
+
+    let background = Style::default().bg(Color::Rgb(24, 32, 24));
+    let block = Block::default().style(background);
     f.render_widget(block, area);
 
-    // Calculate visible messages based on scroll
-    let visible_height = inner.height as usize;
-    let total_lines: usize = app.messages.iter().map(|m| count_lines(&m.content, inner.width as usize) + 1).sum();
-
-    let skip_lines = if total_lines > visible_height {
-        (total_lines - visible_height).saturating_sub(app.scroll_offset)
-    } else {
-        0
-    };
-
-    let mut items: Vec<ListItem> = Vec::new();
-    let mut accumulated_lines = 0;
-
-    for msg in &app.messages {
-        let msg_lines = count_lines(&msg.content, inner.width as usize) + 1;
-
-        if accumulated_lines + msg_lines <= skip_lines {
-            accumulated_lines += msg_lines;
-            continue;
-        }
-
-        let style = message_style(msg);
-        let prefix = message_prefix(msg);
-
-        let mut lines = vec![Line::from(vec![
-            Span::styled(prefix, style.add_modifier(Modifier::BOLD)),
-        ])];
-
-        for line in msg.content.lines() {
-            lines.push(Line::from(Span::styled(
-                format!("  {}", line),
-                style,
-            )));
-        }
-
-        items.push(ListItem::new(lines));
-        accumulated_lines += msg_lines;
-    }
-
-    let list = List::new(items);
-    f.render_widget(list, inner);
-
-    // Loading indicator
-    if app.is_loading {
-        let loading = Paragraph::new(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled("● ", Style::default().fg(MINIMAX_CORAL)),
-            Span::styled("Thinking...", Style::default().fg(Color::DarkGray).italic()),
+    let mut lines = Vec::new();
+    if app.input.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled(prompt, Style::default().fg(Color::Green).bold()),
+            Span::styled(
+                "Type a message or /help for commands...",
+                Style::default().fg(Color::DarkGray).italic(),
+            ),
         ]));
-        let loading_area = Rect {
-            x: inner.x,
-            y: inner.y + inner.height.saturating_sub(1),
-            width: inner.width,
-            height: 1,
-        };
-        f.render_widget(loading, loading_area);
-    }
-}
-
-fn render_input(f: &mut Frame, area: Rect, app: &App) {
-    let mode_indicator = format!(" {} ", app.mode.label());
-    let block = Block::default()
-        .title(Line::from(vec![
-            Span::styled(mode_indicator, Style::default().fg(Color::Black).bg(mode_color(app.mode)).bold()),
-            Span::raw(" "),
-        ]))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(mode_color(app.mode)));
-
-    let inner = block.inner(area);
-
-    // Input text with cursor
-    let input_text = if app.input.is_empty() {
-        Span::styled("Type a message or /help for commands...", Style::default().fg(Color::DarkGray).italic())
     } else {
-        Span::raw(&app.input)
-    };
+        for (idx, line) in visible_lines.iter().enumerate() {
+            let prefix = if idx == 0 { prompt } else { "  " };
+            lines.push(Line::from(vec![
+                Span::styled(prefix, Style::default().fg(Color::Green).bold()),
+                Span::styled(line.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
+    }
 
-    let input = Paragraph::new(input_text).block(block);
-    f.render_widget(input, area);
+    let paragraph = Paragraph::new(lines).style(background);
+    f.render_widget(paragraph, area);
 
-    // Position cursor
-    let cursor_x = inner.x + app.cursor_position as u16;
-    let cursor_y = inner.y;
-    if cursor_x < inner.x + inner.width {
+    let cursor_x = area
+        .x
+        .saturating_add(prompt_width_u16)
+        .saturating_add(u16::try_from(cursor_col).unwrap_or(u16::MAX));
+    let cursor_y = area
+        .y
+        .saturating_add(u16::try_from(cursor_row).unwrap_or(u16::MAX));
+    if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
         f.set_cursor_position((cursor_x, cursor_y));
     }
 }
 
-fn render_status_bar(f: &mut Frame, area: Rect, app: &App) {
-    let mut spans = vec![
-        Span::styled(" F1", Style::default().fg(Color::White).bg(Color::DarkGray)),
-        Span::styled(" Help ", Style::default().fg(Color::DarkGray)),
-        Span::styled(" /mode", Style::default().fg(Color::White).bg(Color::DarkGray)),
-        Span::styled(" Switch ", Style::default().fg(Color::DarkGray)),
-        Span::styled(" /yolo", Style::default().fg(Color::White).bg(Color::DarkGray)),
-        Span::styled(" Agent+Shell ", Style::default().fg(Color::DarkGray)),
-    ];
+fn render_footer(f: &mut Frame, area: Rect, app: &App) {
+    let mut spans = vec![Span::styled(
+        context_indicator(app),
+        Style::default().fg(Color::DarkGray),
+    )];
 
-    // Add status message or token count
-    if let Some(ref msg) = app.status_message {
-        spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
-        spans.push(Span::styled(msg, Style::default().fg(Color::Yellow)));
-    } else {
-        spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+    if let (Some(prompt), Some(completion)) = (app.last_prompt_tokens, app.last_completion_tokens) {
+        spans.push(Span::raw(" | "));
         spans.push(Span::styled(
-            format!("Tokens: {}", app.total_tokens),
+            format!("last tokens: {prompt}/{completion}"),
             Style::default().fg(Color::DarkGray),
         ));
     }
 
-    // Add compact indicator
-    if app.auto_compact {
-        spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
-        spans.push(Span::styled("COMPACT", Style::default().fg(Color::Green)));
+    if !matches!(app.transcript_scroll, TranscriptScroll::ToBottom) {
+        spans.push(Span::raw(" | "));
+        spans.push(Span::styled(
+            "PgUp/PgDn/Home/End",
+            Style::default().fg(Color::DarkGray),
+        ));
+        if app.last_transcript_total > 0 {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                format!(
+                    "{}/{}",
+                    app.last_transcript_top + 1,
+                    app.last_transcript_total
+                ),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
     }
 
-    let status = Paragraph::new(Line::from(spans));
-    f.render_widget(status, area);
+    if app.transcript_selection.is_active() {
+        spans.push(Span::raw(" | "));
+        spans.push(Span::styled(
+            "Ctrl+Y copy selection",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    if let Some(ref msg) = app.status_message {
+        spans.push(Span::raw(" | "));
+        spans.push(Span::styled(msg, Style::default().fg(Color::Yellow)));
+    }
+
+    let footer = Paragraph::new(Line::from(spans));
+    f.render_widget(footer, area);
 }
 
+fn composer_height(input: &str, width: u16, available_height: u16) -> u16 {
+    let prompt_width = "> ".width();
+    let prompt_width_u16 = u16::try_from(prompt_width).unwrap_or(u16::MAX);
+    let content_width = usize::from(width.saturating_sub(prompt_width_u16).max(1));
+    let mut line_count = wrap_input_lines(input, content_width).len();
+    if line_count == 0 {
+        line_count = 1;
+    }
+    let max_height = usize::from(available_height.clamp(1, 8));
+    line_count.clamp(1, max_height).try_into().unwrap_or(1)
+}
+
+fn layout_input(
+    input: &str,
+    cursor: usize,
+    width: usize,
+    max_height: usize,
+) -> (Vec<String>, usize, usize) {
+    let mut lines = wrap_input_lines(input, width);
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    let (cursor_row, cursor_col) = cursor_row_col(input, cursor, width.max(1));
+
+    let max_height = max_height.max(1);
+    let mut start = 0usize;
+    if cursor_row >= max_height {
+        start = cursor_row + 1 - max_height;
+    }
+    if start + max_height > lines.len() {
+        start = lines.len().saturating_sub(max_height);
+    }
+    let visible = lines
+        .into_iter()
+        .skip(start)
+        .take(max_height)
+        .collect::<Vec<_>>();
+    let visible_cursor_row = cursor_row.saturating_sub(start);
+
+    (
+        visible,
+        visible_cursor_row,
+        cursor_col.min(width.saturating_sub(1)),
+    )
+}
+
+fn cursor_row_col(input: &str, cursor: usize, width: usize) -> (usize, usize) {
+    let mut row = 0usize;
+    let mut col = 0usize;
+    let mut idx = 0usize;
+
+    for ch in input.chars() {
+        if idx >= cursor {
+            break;
+        }
+        idx += ch.len_utf8();
+
+        if ch == '\n' {
+            row += 1;
+            col = 0;
+            continue;
+        }
+
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(1);
+        if col + ch_width > width {
+            row += 1;
+            col = 0;
+        }
+        col += ch_width;
+        if col >= width {
+            row += 1;
+            col = 0;
+        }
+    }
+
+    (row, col.min(width.saturating_sub(1)))
+}
+
+fn wrap_input_lines(input: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    if input.is_empty() {
+        return lines;
+    }
+
+    for raw in input.split('\n') {
+        let wrapped = wrap_text(raw, width);
+        if wrapped.is_empty() {
+            lines.push(String::new());
+        } else {
+            lines.extend(wrapped);
+        }
+    }
+
+    if input.ends_with('\n') {
+        lines.push(String::new());
+    }
+
+    lines
+}
+
+fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![text.to_string()];
+    }
+    if text.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0;
+
+    for word in text.split_whitespace() {
+        let word_width = UnicodeWidthStr::width(word);
+        if current_width == 0 {
+            current.push_str(word);
+            current_width = word_width;
+            continue;
+        }
+
+        if current_width + 1 + word_width <= width {
+            current.push(' ');
+            current.push_str(word);
+            current_width += 1 + word_width;
+        } else {
+            lines.push(current);
+            current = word.to_string();
+            current_width = word_width;
+        }
+    }
+
+    if !current.is_empty() {
+        lines.push(current);
+    }
+
+    if lines.is_empty() {
+        vec![String::new()]
+    } else {
+        lines
+    }
+}
+
+fn apply_selection(lines: &mut [Line<'static>], top: usize, app: &App) {
+    let Some((start, end)) = app.transcript_selection.ordered_endpoints() else {
+        return;
+    };
+
+    for (idx, line) in lines.iter_mut().enumerate() {
+        let line_index = top + idx;
+        if line_index < start.line_index || line_index > end.line_index {
+            continue;
+        }
+        for span in &mut line.spans {
+            span.style = span
+                .style
+                .patch(Style::default().bg(Color::Rgb(60, 60, 60)));
+        }
+    }
+}
+
+fn render_scrollbar(f: &mut Frame, area: Rect, top: usize, visible: usize, total: usize) {
+    if total <= visible || area.height == 0 {
+        return;
+    }
+
+    let height = usize::from(area.height);
+    let max_start = total.saturating_sub(visible).max(1);
+    let thumb_height = visible
+        .saturating_mul(height)
+        .div_ceil(total)
+        .clamp(1, height);
+    let track = height.saturating_sub(thumb_height).max(1);
+    let thumb_start = (top.saturating_mul(track) + max_start / 2) / max_start;
+
+    let mut lines = Vec::new();
+    for row in 0..height {
+        let ch = if row >= thumb_start && row < thumb_start + thumb_height {
+            "#"
+        } else {
+            "|"
+        };
+        lines.push(Line::from(Span::styled(
+            ch,
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let scrollbar = Paragraph::new(lines);
+    f.render_widget(scrollbar, area);
+}
+
+fn context_indicator(app: &App) -> String {
+    let used = app
+        .last_prompt_tokens
+        .map(i64::from)
+        .or_else(|| (app.total_tokens > 0).then_some(i64::from(app.total_tokens)));
+
+    if let Some(max) = context_window_for_model(&app.model) {
+        if let Some(used) = used {
+            let max_i64 = i64::from(max);
+            let remaining = (max_i64 - used).max(0);
+            let percent = ((remaining.saturating_mul(100) + max_i64 / 2) / max_i64).clamp(0, 100);
+            format!("{percent}% context left")
+        } else {
+            "100% context left".to_string()
+        }
+    } else if let Some(used) = used {
+        format!("{used} used")
+    } else {
+        "100% context left".to_string()
+    }
+}
+
+fn format_elapsed(start: Instant) -> String {
+    let elapsed = start.elapsed().as_secs();
+    if elapsed >= 60 {
+        format!("{}m{:02}s", elapsed / 60, elapsed % 60)
+    } else {
+        format!("{elapsed}s")
+    }
+}
+
+fn minimax_squiggle(start: Option<Instant>) -> &'static str {
+    const FRAMES: [&str; 8] = [
+        "MM~", "MM~~", "MM~~~", "MM~~~~", "MM~~~", "MM~~", "MM~", "MM.",
+    ];
+    let elapsed_ms = start.map_or(0, |t| t.elapsed().as_millis());
+    let idx = ((elapsed_ms / 220) as usize) % FRAMES.len();
+    FRAMES[idx]
+}
+
+fn minimax_thinking_label(start: Option<Instant>) -> &'static str {
+    const TAGLINES: [&str; 5] = [
+        "Thinking",
+        "Plotting",
+        "Drafting",
+        "You're absolutely right... maybe",
+        "Working",
+    ];
+    const INITIAL_MS: u128 = 2400;
+    let elapsed_ms = start.map_or(0, |t| t.elapsed().as_millis());
+    if elapsed_ms < INITIAL_MS {
+        return "Working";
+    }
+    let idx = (((elapsed_ms - INITIAL_MS) / 2400) as usize) % TAGLINES.len();
+    TAGLINES[idx]
+}
+
+fn truncate_line_to_width(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if UnicodeWidthStr::width(text) <= max_width {
+        return text.to_string();
+    }
+    if max_width <= 3 {
+        return text.chars().take(max_width).collect();
+    }
+
+    let mut out = String::new();
+    let mut width = 0usize;
+    let limit = max_width.saturating_sub(3);
+    for ch in text.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + ch_width > limit {
+            break;
+        }
+        out.push(ch);
+        width += ch_width;
+    }
+    out.push_str("...");
+    out
+}
+
+fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            let update = app.mouse_scroll.on_scroll(ScrollDirection::Up);
+            app.pending_scroll_delta += update.delta_lines;
+        }
+        MouseEventKind::ScrollDown => {
+            let update = app.mouse_scroll.on_scroll(ScrollDirection::Down);
+            app.pending_scroll_delta += update.delta_lines;
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            if is_inside_scrollbar(app, mouse) {
+                jump_scrollbar(app, mouse);
+                return;
+            }
+
+            if let Some(point) = selection_point_from_mouse(app, mouse) {
+                app.transcript_selection.anchor = Some(point);
+                app.transcript_selection.head = Some(point);
+                app.transcript_selection.dragging = true;
+
+                if app.is_loading
+                    && matches!(app.transcript_scroll, TranscriptScroll::ToBottom)
+                    && let Some(anchor) = TranscriptScroll::anchor_for(
+                        app.transcript_cache.line_meta(),
+                        app.last_transcript_top,
+                    )
+                {
+                    app.transcript_scroll = anchor;
+                }
+            } else if app.transcript_selection.is_active() {
+                app.transcript_selection.clear();
+            }
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            if is_inside_scrollbar(app, mouse) {
+                jump_scrollbar(app, mouse);
+                return;
+            }
+
+            if app.transcript_selection.dragging
+                && let Some(point) = selection_point_from_mouse(app, mouse)
+            {
+                app.transcript_selection.head = Some(point);
+            }
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            if app.transcript_selection.dragging {
+                app.transcript_selection.dragging = false;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn selection_point_from_mouse(app: &App, mouse: MouseEvent) -> Option<TranscriptSelectionPoint> {
+    let area = app.last_transcript_area?;
+    if mouse.column < area.x
+        || mouse.column >= area.x + area.width
+        || mouse.row < area.y
+        || mouse.row >= area.y + area.height
+    {
+        return None;
+    }
+
+    let row = mouse.row.saturating_sub(area.y) as usize;
+    let col = mouse.column.saturating_sub(area.x) as usize;
+    if app.last_transcript_total == 0 {
+        return None;
+    }
+    let line_index = app
+        .last_transcript_top
+        .saturating_add(row)
+        .min(app.last_transcript_total.saturating_sub(1));
+
+    Some(TranscriptSelectionPoint {
+        line_index,
+        column: col,
+    })
+}
+
+fn is_inside_scrollbar(app: &App, mouse: MouseEvent) -> bool {
+    let Some(area) = app.last_scrollbar_area else {
+        return false;
+    };
+    mouse.column >= area.x
+        && mouse.column < area.x + area.width
+        && mouse.row >= area.y
+        && mouse.row < area.y + area.height
+}
+
+fn jump_scrollbar(app: &mut App, mouse: MouseEvent) {
+    let Some(area) = app.last_scrollbar_area else {
+        return;
+    };
+    if app.last_transcript_total <= app.last_transcript_visible {
+        return;
+    }
+
+    let rel = usize::from(mouse.row.saturating_sub(area.y));
+    let height = usize::from(area.height.max(1));
+    let max_start = app
+        .last_transcript_total
+        .saturating_sub(app.last_transcript_visible)
+        .max(1);
+    let target = (rel.saturating_mul(max_start) + height / 2) / height;
+    if let Some(anchor) = TranscriptScroll::anchor_for(app.transcript_cache.line_meta(), target) {
+        app.transcript_scroll = anchor;
+    }
+}
+
+fn selection_to_text(app: &App) -> Option<String> {
+    let (start, end) = app.transcript_selection.ordered_endpoints()?;
+    let lines = app.transcript_cache.lines();
+    if lines.is_empty() {
+        return None;
+    }
+    let end_index = end.line_index.min(lines.len().saturating_sub(1));
+    let start_index = start.line_index.min(end_index);
+
+    let mut out = String::new();
+    #[allow(clippy::needless_range_loop)]
+    for line_index in start_index..=end_index {
+        let line_text = line_to_plain(&lines[line_index]);
+        let slice = if start_index == end_index {
+            slice_text(&line_text, start.column, end.column)
+        } else if line_index == start_index {
+            slice_text(&line_text, start.column, line_text.chars().count())
+        } else if line_index == end_index {
+            slice_text(&line_text, 0, end.column)
+        } else {
+            line_text
+        };
+        out.push_str(&slice);
+        if line_index != end_index {
+            out.push('\n');
+        }
+    }
+    Some(out)
+}
+
+fn line_to_plain(line: &Line<'static>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>()
+}
+
+fn slice_text(text: &str, start: usize, end: usize) -> String {
+    let mut out = String::new();
+    let mut idx = 0usize;
+    for ch in text.chars() {
+        if idx >= start && idx < end {
+            out.push(ch);
+        }
+        idx += 1;
+        if idx >= end {
+            break;
+        }
+    }
+    out
+}
+
+#[allow(clippy::too_many_lines)]
 fn render_help_popup(f: &mut Frame, area: Rect) {
     let popup_width = 60.min(area.width - 4);
     let popup_height = 20.min(area.height - 4);
@@ -553,43 +1476,68 @@ fn render_help_popup(f: &mut Frame, area: Rect) {
 
     f.render_widget(Clear, popup_area);
 
-    let help_text = vec![
-        Line::from(vec![
-            Span::styled("MiniMax CLI Help", Style::default().fg(MINIMAX_RED).bold()),
-        ]),
+    let mut help_text = vec![
+        Line::from(vec![Span::styled(
+            "MiniMax CLI Help",
+            Style::default().fg(MINIMAX_RED).bold(),
+        )]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Modes:", Style::default().fg(MINIMAX_CORAL).bold()),
-        ]),
+        Line::from(vec![Span::styled(
+            "Modes:",
+            Style::default().fg(MINIMAX_CORAL).bold(),
+        )]),
         Line::from("  /mode normal  - Chat mode (default)"),
         Line::from("  /mode edit    - Edit mode (file modification)"),
         Line::from("  /mode agent   - Agent mode (tool execution)"),
         Line::from("  /mode plan    - Plan mode (design first)"),
         Line::from("  /mode rlm     - RLM sandbox mode"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Commands:", Style::default().fg(MINIMAX_CORAL).bold()),
-        ]),
-        Line::from("  /help         - Show this help"),
-        Line::from("  /clear        - Clear conversation"),
-        Line::from("  /model <name> - Change model"),
-        Line::from("  /yolo         - Enable agent + shell"),
-        Line::from("  /compact      - Toggle auto-compaction"),
-        Line::from("  /save <path>  - Save session"),
-        Line::from("  /load <path>  - Load session"),
-        Line::from("  /exit         - Exit application"),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Press Esc or Enter to close", Style::default().fg(Color::DarkGray)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Commands:",
+            Style::default().fg(MINIMAX_CORAL).bold(),
+        )]),
     ];
+
+    let fixed_lines = 12u16;
+    let max_command_lines = popup_height.saturating_sub(fixed_lines) as usize;
+    let total_commands = commands::COMMANDS.len();
+    let show_more = total_commands > max_command_lines && max_command_lines > 0;
+    let list_limit = if show_more {
+        max_command_lines.saturating_sub(1)
+    } else {
+        max_command_lines
+    };
+
+    if list_limit == 0 && total_commands > 0 {
+        help_text.push(Line::from("  Use /help to list commands"));
+    } else {
+        for cmd in commands::COMMANDS.iter().take(list_limit) {
+            help_text.push(Line::from(format!(
+                "  /{:<10} - {}",
+                cmd.name, cmd.description
+            )));
+        }
+        if show_more {
+            let remaining = total_commands.saturating_sub(list_limit);
+            help_text.push(Line::from(format!(
+                "  ... and {remaining} more (use /help)"
+            )));
+        }
+    }
+
+    help_text.push(Line::from(""));
+    help_text.push(Line::from(vec![Span::styled(
+        "Press Esc or Enter to close",
+        Style::default().fg(Color::DarkGray),
+    )]));
 
     let help = Paragraph::new(help_text)
         .block(
             Block::default()
-                .title(Line::from(vec![
-                    Span::styled(" Help ", Style::default().fg(MINIMAX_RED).bold()),
-                ]))
+                .title(Line::from(vec![Span::styled(
+                    " Help ",
+                    Style::default().fg(MINIMAX_RED).bold(),
+                )]))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(MINIMAX_CORAL)),
         )
@@ -598,10 +1546,10 @@ fn render_help_popup(f: &mut Frame, area: Rect) {
     f.render_widget(help, popup_area);
 }
 
+#[allow(clippy::too_many_lines)]
 fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
     // Clear the entire screen with a dark background
-    let block = Block::default()
-        .style(Style::default().bg(Color::Black));
+    let block = Block::default().style(Style::default().bg(Color::Black));
     f.render_widget(block, area);
 
     // Center the content
@@ -625,7 +1573,10 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                     1 => MINIMAX_CORAL,
                     _ => MINIMAX_ORANGE,
                 };
-                lines.push(Line::from(Span::styled(line, Style::default().fg(color).bold())));
+                lines.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(color).bold(),
+                )));
             }
 
             lines.push(Line::from(""));
@@ -669,7 +1620,10 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(vec![
                 Span::styled("Press ", Style::default().fg(Color::DarkGray)),
                 Span::styled("Enter", Style::default().fg(Color::White).bold()),
-                Span::styled(" to enter your API key", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    " to enter your API key",
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]));
             lines.push(Line::from(vec![
                 Span::styled("Press ", Style::default().fg(Color::DarkGray)),
@@ -678,32 +1632,42 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             ]));
 
             let paragraph = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MINIMAX_RED)))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(MINIMAX_RED)),
+                )
                 .centered();
             f.render_widget(paragraph, content_area);
         }
         OnboardingState::EnteringKey => {
-            let mut lines = vec![];
-
-            lines.push(Line::from(Span::styled(
-                "Enter Your API Key",
-                Style::default().fg(MINIMAX_RED).bold(),
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Paste your MiniMax API key below:",
-                Style::default().fg(Color::White),
-            )));
-            lines.push(Line::from(""));
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Enter Your API Key",
+                    Style::default().fg(MINIMAX_RED).bold(),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Paste your MiniMax API key below:",
+                    Style::default().fg(Color::White),
+                )),
+                Line::from(""),
+            ];
 
             // API key input field (masked)
             let masked_key = if app.api_key_input.is_empty() {
-                Span::styled("(paste your key here)", Style::default().fg(Color::DarkGray).italic())
+                Span::styled(
+                    "(paste your key here)",
+                    Style::default().fg(Color::DarkGray).italic(),
+                )
             } else {
                 // Show first 8 chars, mask the rest
                 let visible = app.api_key_input.chars().take(8).collect::<String>();
                 let hidden = "*".repeat(app.api_key_input.len().saturating_sub(8));
-                Span::styled(format!("{}{}", visible, hidden), Style::default().fg(Color::Green))
+                Span::styled(
+                    format!("{visible}{hidden}"),
+                    Style::default().fg(Color::Green),
+                )
             };
             lines.push(Line::from(masked_key));
             lines.push(Line::from(""));
@@ -711,7 +1675,10 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
 
             // Status message
             if let Some(ref msg) = app.status_message {
-                lines.push(Line::from(Span::styled(msg, Style::default().fg(Color::Yellow))));
+                lines.push(Line::from(Span::styled(
+                    msg,
+                    Style::default().fg(Color::Yellow),
+                )));
                 lines.push(Line::from(""));
             }
 
@@ -727,42 +1694,50 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             ]));
 
             let paragraph = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(MINIMAX_CORAL)))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(MINIMAX_CORAL)),
+                )
                 .centered();
             f.render_widget(paragraph, content_area);
         }
         OnboardingState::Success => {
-            let mut lines = vec![];
-
-            lines.push(Line::from(Span::styled(
-                "API Key Saved!",
-                Style::default().fg(Color::Green).bold(),
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Your API key has been saved to:",
-                Style::default().fg(Color::White),
-            )));
-            lines.push(Line::from(Span::styled(
-                "~/.minimax/config.toml",
-                Style::default().fg(MINIMAX_CORAL),
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "You're all set! Start chatting with MiniMax M2.1",
-                Style::default().fg(Color::White),
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("Press ", Style::default().fg(Color::DarkGray)),
-                Span::styled("Enter", Style::default().fg(Color::White).bold()),
-                Span::styled(" to continue", Style::default().fg(Color::DarkGray)),
-            ]));
+            let lines = vec![
+                Line::from(Span::styled(
+                    "API Key Saved!",
+                    Style::default().fg(Color::Green).bold(),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Your API key has been saved to:",
+                    Style::default().fg(Color::White),
+                )),
+                Line::from(Span::styled(
+                    "~/.minimax/config.toml",
+                    Style::default().fg(MINIMAX_CORAL),
+                )),
+                Line::from(""),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "You're all set! Start chatting with MiniMax M2.1",
+                    Style::default().fg(Color::White),
+                )),
+                Line::from(""),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Enter", Style::default().fg(Color::White).bold()),
+                    Span::styled(" to continue", Style::default().fg(Color::DarkGray)),
+                ]),
+            ];
 
             let paragraph = Paragraph::new(lines)
-                .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Green)))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Green)),
+                )
                 .centered();
             f.render_widget(paragraph, content_area);
         }
@@ -770,38 +1745,538 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn message_style(msg: &ChatMessage) -> Style {
-    if msg.is_thinking {
-        Style::default().fg(Color::Yellow).italic()
-    } else if msg.is_tool_call {
-        Style::default().fg(Color::Cyan)
+fn extract_reasoning_header(text: &str) -> Option<String> {
+    let start = text.find("**")?;
+    let rest = &text[start + 2..];
+    let end = rest.find("**")?;
+    let header = rest[..end].trim().trim_end_matches(':');
+    if header.is_empty() {
+        None
     } else {
-        match msg.role.as_str() {
-            "user" => Style::default().fg(Color::Green),
-            "assistant" => Style::default().fg(Color::White),
-            "system" => Style::default().fg(Color::DarkGray).italic(),
-            _ => Style::default(),
+        Some(header.to_string())
+    }
+}
+
+fn format_subagent_list(agents: &[SubAgentResult]) -> String {
+    if agents.is_empty() {
+        return "No sub-agents running.".to_string();
+    }
+
+    let mut lines = Vec::new();
+    lines.push("Sub-agents:".to_string());
+    lines.push("----------------------------------------".to_string());
+
+    for agent in agents {
+        let status = format_subagent_status(&agent.status);
+        let mut line = format!(
+            "  {} ({:?}) - {} | steps: {} | {}ms",
+            agent.agent_id, agent.agent_type, status, agent.steps_taken, agent.duration_ms
+        );
+        if matches!(agent.status, SubAgentStatus::Completed)
+            && let Some(result) = agent.result.as_ref()
+        {
+            let _ = write!(line, "\n    Result: {}", summarize_tool_output(result));
+        }
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+fn format_subagent_status(status: &SubAgentStatus) -> String {
+    match status {
+        SubAgentStatus::Running => "running".to_string(),
+        SubAgentStatus::Completed => "completed".to_string(),
+        SubAgentStatus::Cancelled => "cancelled".to_string(),
+        SubAgentStatus::Failed(err) => format!("failed: {}", summarize_tool_output(err)),
+    }
+}
+
+#[allow(clippy::too_many_lines)]
+fn handle_tool_call_started(app: &mut App, id: &str, name: &str, input: &serde_json::Value) {
+    let id = id.to_string();
+    if is_exploring_tool(name) {
+        let label = exploring_label(name, input);
+        let cell_index = if let Some(idx) = app.exploring_cell {
+            idx
+        } else {
+            app.add_message(HistoryCell::Tool(ToolCell::Exploring(ExploringCell {
+                entries: Vec::new(),
+            })));
+            let idx = app.history.len().saturating_sub(1);
+            app.exploring_cell = Some(idx);
+            idx
+        };
+
+        if let Some(HistoryCell::Tool(ToolCell::Exploring(cell))) = app.history.get_mut(cell_index)
+        {
+            let entry_index = cell.insert_entry(ExploringEntry {
+                label,
+                status: ToolStatus::Running,
+            });
+            app.mark_history_updated();
+            app.exploring_entries
+                .insert(id.clone(), (cell_index, entry_index));
+        }
+        app.tool_cells.insert(id, cell_index);
+        return;
+    }
+
+    app.exploring_cell = None;
+
+    if is_exec_tool(name) {
+        let command = exec_command_from_input(input).unwrap_or_else(|| "<command>".to_string());
+        let source = exec_source_from_input(input);
+        let interaction = exec_interaction_summary(name, input);
+        let mut is_wait = false;
+
+        if let Some((summary, wait)) = interaction.as_ref() {
+            is_wait = *wait;
+            if is_wait
+                && app
+                    .last_exec_wait_command
+                    .as_ref()
+                    .is_some_and(|last| last == &command)
+            {
+                app.ignored_tool_calls.insert(id);
+                return;
+            }
+            if is_wait {
+                app.last_exec_wait_command = Some(command.clone());
+            }
+
+            app.add_message(HistoryCell::Tool(ToolCell::Exec(ExecCell {
+                command,
+                status: ToolStatus::Running,
+                output: None,
+                started_at: Some(Instant::now()),
+                duration_ms: None,
+                source,
+                interaction: Some(summary.clone()),
+            })));
+            app.tool_cells
+                .insert(id, app.history.len().saturating_sub(1));
+            return;
+        }
+
+        if exec_is_background(input)
+            && app
+                .last_exec_wait_command
+                .as_ref()
+                .is_some_and(|last| last == &command)
+        {
+            app.ignored_tool_calls.insert(id);
+            return;
+        }
+        if exec_is_background(input) && !is_wait {
+            app.last_exec_wait_command = Some(command.clone());
+        }
+
+        app.add_message(HistoryCell::Tool(ToolCell::Exec(ExecCell {
+            command,
+            status: ToolStatus::Running,
+            output: None,
+            started_at: Some(Instant::now()),
+            duration_ms: None,
+            source,
+            interaction: None,
+        })));
+        app.tool_cells
+            .insert(id, app.history.len().saturating_sub(1));
+        return;
+    }
+
+    if name == "update_plan" {
+        let (explanation, steps) = parse_plan_input(input);
+        app.add_message(HistoryCell::Tool(ToolCell::PlanUpdate(PlanUpdateCell {
+            explanation,
+            steps,
+            status: ToolStatus::Running,
+        })));
+        app.tool_cells
+            .insert(id, app.history.len().saturating_sub(1));
+        return;
+    }
+
+    if name == "apply_patch" {
+        let (path, summary) = parse_patch_summary(input);
+        app.add_message(HistoryCell::Tool(ToolCell::PatchSummary(
+            PatchSummaryCell {
+                path,
+                summary,
+                status: ToolStatus::Running,
+                error: None,
+            },
+        )));
+        app.tool_cells
+            .insert(id, app.history.len().saturating_sub(1));
+        return;
+    }
+
+    if is_mcp_tool(name) {
+        app.add_message(HistoryCell::Tool(ToolCell::Mcp(McpToolCell {
+            tool: name.to_string(),
+            status: ToolStatus::Running,
+            content: None,
+            is_image: false,
+        })));
+        app.tool_cells
+            .insert(id, app.history.len().saturating_sub(1));
+        return;
+    }
+
+    if is_view_image_tool(name) {
+        if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
+            let raw_path = PathBuf::from(path);
+            let display_path = raw_path
+                .strip_prefix(&app.workspace)
+                .unwrap_or(&raw_path)
+                .to_path_buf();
+            app.add_message(HistoryCell::Tool(ToolCell::ViewImage(ViewImageCell {
+                path: display_path,
+            })));
+            app.tool_cells
+                .insert(id, app.history.len().saturating_sub(1));
+        }
+        return;
+    }
+
+    if is_web_search_tool(name) {
+        let query = web_search_query(input);
+        app.add_message(HistoryCell::Tool(ToolCell::WebSearch(WebSearchCell {
+            query,
+            status: ToolStatus::Running,
+            summary: None,
+        })));
+        app.tool_cells
+            .insert(id, app.history.len().saturating_sub(1));
+        return;
+    }
+
+    let input_summary = summarize_tool_args(input);
+    app.add_message(HistoryCell::Tool(ToolCell::Generic(GenericToolCell {
+        name: name.to_string(),
+        status: ToolStatus::Running,
+        input_summary,
+        output: None,
+    })));
+    app.tool_cells
+        .insert(id, app.history.len().saturating_sub(1));
+}
+
+#[allow(clippy::too_many_lines)]
+fn handle_tool_call_complete(
+    app: &mut App,
+    id: &str,
+    _name: &str,
+    result: &Result<ToolResult, ToolError>,
+) {
+    if app.ignored_tool_calls.remove(id) {
+        return;
+    }
+
+    if let Some((cell_index, entry_index)) = app.exploring_entries.remove(id) {
+        if let Some(HistoryCell::Tool(ToolCell::Exploring(cell))) = app.history.get_mut(cell_index)
+            && let Some(entry) = cell.entries.get_mut(entry_index)
+        {
+            entry.status = match result.as_ref() {
+                Ok(tool_result) if tool_result.success => ToolStatus::Success,
+                Ok(_) | Err(_) => ToolStatus::Failed,
+            };
+            app.mark_history_updated();
+        }
+        return;
+    }
+
+    let Some(cell_index) = app.tool_cells.remove(id) else {
+        return;
+    };
+
+    let status = match result.as_ref() {
+        Ok(tool_result) => match tool_result.metadata.as_ref() {
+            Some(meta)
+                if meta
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s == "Running") =>
+            {
+                ToolStatus::Running
+            }
+            _ => {
+                if tool_result.success {
+                    ToolStatus::Success
+                } else {
+                    ToolStatus::Failed
+                }
+            }
+        },
+        Err(_) => ToolStatus::Failed,
+    };
+
+    if let Some(cell) = app.history.get_mut(cell_index) {
+        match cell {
+            HistoryCell::Tool(ToolCell::Exec(exec)) => {
+                exec.status = status;
+                if let Ok(tool_result) = result.as_ref() {
+                    exec.duration_ms = tool_result
+                        .metadata
+                        .as_ref()
+                        .and_then(|m| m.get("duration_ms"))
+                        .and_then(serde_json::Value::as_u64);
+                    if status != ToolStatus::Running && exec.interaction.is_none() {
+                        exec.output = Some(tool_result.content.clone());
+                    }
+                } else if let Err(err) = result.as_ref()
+                    && exec.interaction.is_none()
+                {
+                    exec.output = Some(err.to_string());
+                }
+                app.mark_history_updated();
+            }
+            HistoryCell::Tool(ToolCell::PlanUpdate(plan)) => {
+                plan.status = status;
+                app.mark_history_updated();
+            }
+            HistoryCell::Tool(ToolCell::PatchSummary(patch)) => {
+                patch.status = status;
+                match result.as_ref() {
+                    Ok(tool_result) => {
+                        if let Ok(json) =
+                            serde_json::from_str::<serde_json::Value>(&tool_result.content)
+                            && let Some(message) = json.get("message").and_then(|v| v.as_str())
+                        {
+                            patch.summary = message.to_string();
+                        }
+                    }
+                    Err(err) => {
+                        patch.error = Some(err.to_string());
+                    }
+                }
+                app.mark_history_updated();
+            }
+            HistoryCell::Tool(ToolCell::Mcp(mcp)) => {
+                match result.as_ref() {
+                    Ok(tool_result) => {
+                        let summary = summarize_mcp_output(&tool_result.content);
+                        if summary.is_error == Some(true) {
+                            mcp.status = ToolStatus::Failed;
+                        } else {
+                            mcp.status = status;
+                        }
+                        mcp.is_image = summary.is_image;
+                        mcp.content = summary.content;
+                    }
+                    Err(err) => {
+                        mcp.status = status;
+                        mcp.content = Some(err.to_string());
+                    }
+                }
+                app.mark_history_updated();
+            }
+            HistoryCell::Tool(ToolCell::WebSearch(search)) => {
+                search.status = status;
+                match result.as_ref() {
+                    Ok(tool_result) => {
+                        search.summary = Some(summarize_tool_output(&tool_result.content));
+                    }
+                    Err(err) => {
+                        search.summary = Some(err.to_string());
+                    }
+                }
+                app.mark_history_updated();
+            }
+            HistoryCell::Tool(ToolCell::Generic(generic)) => {
+                generic.status = status;
+                match result.as_ref() {
+                    Ok(tool_result) => {
+                        generic.output = Some(summarize_tool_output(&tool_result.content));
+                    }
+                    Err(err) => {
+                        generic.output = Some(err.to_string());
+                    }
+                }
+                app.mark_history_updated();
+            }
+            _ => {}
         }
     }
 }
 
-fn message_prefix(msg: &ChatMessage) -> String {
-    if msg.is_thinking {
-        "💭 Thinking:".to_string()
-    } else if msg.is_tool_call {
-        format!("🔧 Tool: {}", msg.tool_name.as_deref().unwrap_or("unknown"))
-    } else {
-        match msg.role.as_str() {
-            "user" => "You:".to_string(),
-            "assistant" => "MiniMax:".to_string(),
-            "system" => "System:".to_string(),
-            _ => format!("{}:", msg.role),
+fn is_exploring_tool(name: &str) -> bool {
+    matches!(name, "read_file" | "list_dir" | "grep_files" | "list_files")
+}
+
+fn is_exec_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "exec_shell" | "exec_shell_wait" | "exec_shell_interact" | "exec_wait" | "exec_interact"
+    )
+}
+
+fn exploring_label(name: &str, input: &serde_json::Value) -> String {
+    let fallback = format!("{name} tool");
+    let obj = input.as_object();
+    match name {
+        "read_file" => obj
+            .and_then(|o| o.get("path"))
+            .and_then(|v| v.as_str())
+            .map_or(fallback, |path| format!("Read {path}")),
+        "list_dir" => obj
+            .and_then(|o| o.get("path"))
+            .and_then(|v| v.as_str())
+            .map_or("List directory".to_string(), |path| format!("List {path}")),
+        "grep_files" => {
+            let pattern = obj
+                .and_then(|o| o.get("pattern"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("pattern");
+            format!("Search {pattern}")
         }
+        "list_files" => "List files".to_string(),
+        _ => fallback,
     }
 }
 
-fn count_lines(text: &str, width: usize) -> usize {
-    text.lines()
-        .map(|line| (line.len() / width.max(1)) + 1)
-        .sum()
+fn is_mcp_tool(name: &str) -> bool {
+    name.starts_with("mcp_")
+}
+
+fn is_view_image_tool(name: &str) -> bool {
+    matches!(name, "view_image" | "view_image_file" | "view_image_tool")
+}
+
+fn is_web_search_tool(name: &str) -> bool {
+    matches!(name, "web_search" | "search_web" | "search")
+}
+
+fn web_search_query(input: &serde_json::Value) -> String {
+    input
+        .get("query")
+        .or_else(|| input.get("q"))
+        .or_else(|| input.get("search"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Web search")
+        .to_string()
+}
+
+fn parse_plan_input(input: &serde_json::Value) -> (Option<String>, Vec<PlanStep>) {
+    let explanation = input
+        .get("explanation")
+        .and_then(|v| v.as_str())
+        .map(std::string::ToString::to_string);
+    let mut steps = Vec::new();
+    if let Some(items) = input.get("plan").and_then(|v| v.as_array()) {
+        for item in items {
+            let step = item.get("step").and_then(|v| v.as_str()).unwrap_or("");
+            let status = item
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("pending");
+            if !step.is_empty() {
+                steps.push(PlanStep {
+                    step: step.to_string(),
+                    status: status.to_string(),
+                });
+            }
+        }
+    }
+    (explanation, steps)
+}
+
+fn parse_patch_summary(input: &serde_json::Value) -> (String, String) {
+    let path = input
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<file>")
+        .to_string();
+    let patch_text = input.get("patch").and_then(|v| v.as_str()).unwrap_or("");
+    let (adds, removes) = count_patch_changes(patch_text);
+    let summary = if adds == 0 && removes == 0 {
+        "Patch applied".to_string()
+    } else {
+        format!("Changes: +{adds} / -{removes}")
+    };
+    (path, summary)
+}
+
+fn count_patch_changes(patch: &str) -> (usize, usize) {
+    let mut adds = 0;
+    let mut removes = 0;
+    for line in patch.lines() {
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with('+') {
+            adds += 1;
+        } else if line.starts_with('-') {
+            removes += 1;
+        }
+    }
+    (adds, removes)
+}
+
+fn exec_command_from_input(input: &serde_json::Value) -> Option<String> {
+    input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .map(std::string::ToString::to_string)
+}
+
+fn exec_source_from_input(input: &serde_json::Value) -> ExecSource {
+    match input.get("source").and_then(|v| v.as_str()) {
+        Some(source) if source.eq_ignore_ascii_case("user") => ExecSource::User,
+        _ => ExecSource::Assistant,
+    }
+}
+
+fn exec_interaction_summary(name: &str, input: &serde_json::Value) -> Option<(String, bool)> {
+    let command = exec_command_from_input(input).unwrap_or_else(|| "<command>".to_string());
+    let command_display = format!("\"{command}\"");
+    let interaction_input = input
+        .get("input")
+        .or_else(|| input.get("stdin"))
+        .or_else(|| input.get("data"))
+        .and_then(|v| v.as_str());
+
+    let is_wait_tool = matches!(name, "exec_shell_wait" | "exec_wait");
+    let is_interact_tool = matches!(name, "exec_shell_interact" | "exec_interact");
+
+    if is_interact_tool || interaction_input.is_some() {
+        let preview = interaction_input.map(summarize_interaction_input);
+        let summary = if let Some(preview) = preview {
+            format!("Interacted with {command_display}, sent {preview}")
+        } else {
+            format!("Interacted with {command_display}")
+        };
+        return Some((summary, false));
+    }
+
+    if is_wait_tool || input.get("wait").and_then(serde_json::Value::as_bool) == Some(true) {
+        return Some((format!("Waited for {command_display}"), true));
+    }
+
+    None
+}
+
+fn summarize_interaction_input(input: &str) -> String {
+    let mut single_line = input.replace('\r', "");
+    single_line = single_line.replace('\n', "\\n");
+    single_line = single_line.replace('\"', "'");
+    let max_len = 80;
+    if single_line.chars().count() <= max_len {
+        return format!("\"{single_line}\"");
+    }
+    let mut out = String::new();
+    for ch in single_line.chars().take(max_len.saturating_sub(3)) {
+        out.push(ch);
+    }
+    out.push_str("...");
+    format!("\"{out}\"")
+}
+
+fn exec_is_background(input: &serde_json::Value) -> bool {
+    input
+        .get("background")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
 }

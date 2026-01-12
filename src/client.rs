@@ -1,29 +1,69 @@
-use crate::config::{Config, RetryPolicy};
-use crate::logging;
-use crate::models::{MessageRequest, MessageResponse, StreamEvent};
+//! HTTP clients for `MiniMax` and Anthropic-compatible APIs.
+//!
+//! This module centralizes retry behavior, base URLs, and streaming helpers
+//! for the `MiniMax` CLI's network requests.
+
+use std::pin::Pin;
+
 use anyhow::Result;
 use futures_util::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
+use crate::config::{Config, RetryPolicy};
+use crate::llm_client::{LlmClient, StreamEventBox};
+use crate::logging;
+use crate::models::{MessageRequest, MessageResponse, StreamEvent};
+
+// === Types ===
+
+/// Client for `MiniMax` API requests with retry and base URL handling.
+#[must_use]
 pub struct MiniMaxClient {
     http_client: reqwest::Client,
+    raw_http_client: reqwest::Client,
     base_url: String,
     retry: RetryPolicy,
 }
 
+/// Client for Anthropic-compatible API requests.
+#[derive(Clone)]
+#[must_use]
 pub struct AnthropicClient {
     http_client: reqwest::Client,
     base_url: String,
     retry: RetryPolicy,
+    #[allow(dead_code)] // For future model selection
+    default_model: String,
 }
 
+// === Helpers ===
+
+fn is_minimax_base_url(base_url: &str) -> bool {
+    let base = base_url.to_lowercase();
+    base.contains("api.minimax.io") || base.contains("api.minimaxi.com")
+}
+
+// === MiniMaxClient ===
+
 impl MiniMaxClient {
+    /// Create a `MiniMax` client from CLI configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use crate::client::MiniMaxClient;
+    /// # use crate::config::Config;
+    /// # fn example(config: &Config) -> anyhow::Result<()> {
+    /// let client = MiniMaxClient::new(config)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(config: &Config) -> Result<Self> {
         let api_key = config.minimax_api_key()?;
         let base_url = config.minimax_base_url();
         let retry = config.retry_policy();
 
-        logging::info(format!("MiniMax base URL: {}", base_url));
+        logging::info(format!("MiniMax base URL: {base_url}"));
         logging::info(format!(
             "Retry policy: enabled={}, max_retries={}, initial_delay={}s, max_delay={}s",
             retry.enabled, retry.max_retries, retry.initial_delay, retry.max_delay
@@ -33,30 +73,43 @@ impl MiniMaxClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", api_key))?,
+            HeaderValue::from_str(&format!("Bearer {api_key}"))?,
         );
 
         let http_client = reqwest::Client::builder()
             .default_headers(headers)
             .build()?;
+        let raw_http_client = reqwest::Client::new();
 
         Ok(Self {
             http_client,
+            raw_http_client,
             base_url,
             retry,
         })
     }
 
+    /// Send a JSON POST request and deserialize the response body.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use crate::client::MiniMaxClient;
+    /// # async fn example(client: &MiniMaxClient) -> anyhow::Result<()> {
+    /// let response: serde_json::Value = client
+    ///     .post_json("/v1/mock", &serde_json::json!({ "foo": "bar" }))
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn post_json<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         body: &impl serde::Serialize,
     ) -> Result<T> {
         let url = self.url(path);
-        let response = send_with_retry(&self.retry, || {
-            self.http_client.post(&url).json(body)
-        })
-        .await?;
+        let response =
+            send_with_retry(&self.retry, || self.http_client.post(&url).json(body)).await?;
         self.parse_json_response(response).await
     }
 
@@ -66,13 +119,12 @@ impl MiniMaxClient {
         body: &impl serde::Serialize,
     ) -> Result<reqwest::Response> {
         let url = self.url(path);
-        let response = send_with_retry(&self.retry, || {
-            self.http_client.post(&url).json(body)
-        })
-        .await?;
+        let response =
+            send_with_retry(&self.retry, || self.http_client.post(&url).json(body)).await?;
         Ok(response)
     }
 
+    /// Send a JSON GET request with optional query params.
     pub async fn get_json<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
@@ -81,7 +133,7 @@ impl MiniMaxClient {
         let url = self.url(path);
         let response = if let Some(query) = query {
             let mut url = reqwest::Url::parse(&url)?;
-            url.query_pairs_mut().extend_pairs(query.iter().cloned());
+            url.query_pairs_mut().extend_pairs(query.iter().copied());
             send_with_retry(&self.retry, || self.http_client.get(url.clone())).await?
         } else {
             send_with_retry(&self.retry, || self.http_client.get(&url)).await?
@@ -89,6 +141,7 @@ impl MiniMaxClient {
         self.parse_json_response(response).await
     }
 
+    /// Send a multipart POST request and deserialize the response body.
     pub async fn post_multipart<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
@@ -99,30 +152,42 @@ impl MiniMaxClient {
         self.parse_json_response(response).await
     }
 
+    /// Fetch raw bytes from a URL, using auth headers for MiniMax-hosted URLs.
     pub async fn get_bytes(&self, url: &str) -> Result<bytes::Bytes> {
-        let response = send_with_retry(&self.retry, || self.http_client.get(url)).await?;
+        let client = if is_minimax_base_url(url) {
+            &self.http_client
+        } else {
+            &self.raw_http_client
+        };
+        let response = send_with_retry(&self.retry, || client.get(url)).await?;
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("HTTP {}: {}", status, text);
+            anyhow::bail!("Failed to fetch bytes: HTTP {status}: {text}");
         }
         Ok(response.bytes().await?)
     }
 
+    /// Fetch raw bytes from a path with query params, returning an optional content type.
     pub async fn get_bytes_with_query(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<(bytes::Bytes, Option<String>)> {
         let url = self.url(path);
+        let client = if is_minimax_base_url(&url) {
+            &self.http_client
+        } else {
+            &self.raw_http_client
+        };
         let mut url = reqwest::Url::parse(&url)?;
-        url.query_pairs_mut().extend_pairs(query.iter().cloned());
-        let response = send_with_retry(&self.retry, || self.http_client.get(url.clone())).await?;
+        url.query_pairs_mut().extend_pairs(query.iter().copied());
+        let response = send_with_retry(&self.retry, || client.get(url.clone())).await?;
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .map(|value| value.to_string());
+            .map(str::to_string);
         Ok((response.bytes().await?, content_type))
     }
 
@@ -145,19 +210,39 @@ impl MiniMaxClient {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("API request failed with status {}: {}", status, text);
+            anyhow::bail!("Failed to call MiniMax API: HTTP {status}: {text}");
         }
         Ok(response.json::<T>().await?)
     }
 }
 
+// === AnthropicClient ===
+
 impl AnthropicClient {
+    /// Create an Anthropic-compatible client using the default model.
     pub fn new(config: &Config) -> Result<Self> {
+        Self::with_model(config, "claude-sonnet-4-20250514".to_string())
+    }
+
+    /// Create an Anthropic-compatible client pinned to a specific model.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use crate::client::AnthropicClient;
+    /// # use crate::config::Config;
+    /// # fn example(config: &Config) -> anyhow::Result<()> {
+    /// let client = AnthropicClient::with_model(config, "claude-sonnet-4-20250514".to_string())?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_model(config: &Config, model: String) -> Result<Self> {
         let base_url = config.anthropic_base_url();
         let api_key = config.anthropic_api_key()?;
         let retry = config.retry_policy();
+        let is_minimax = is_minimax_base_url(&base_url);
 
-        logging::info(format!("Anthropic base URL: {}", base_url));
+        logging::info(format!("Anthropic base URL: {base_url}"));
         logging::info(format!(
             "Retry policy: enabled={}, max_retries={}, initial_delay={}s, max_delay={}s",
             retry.enabled, retry.max_retries, retry.initial_delay, retry.max_delay
@@ -166,6 +251,12 @@ impl AnthropicClient {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert("x-api-key", HeaderValue::from_str(&api_key)?);
+        if is_minimax {
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {api_key}"))?,
+            );
+        }
         headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
 
         let http_client = reqwest::Client::builder()
@@ -176,21 +267,28 @@ impl AnthropicClient {
             http_client,
             base_url,
             retry,
+            default_model: model,
         })
     }
 
+    /// Get the default model name
+    #[allow(dead_code)] // For future model selection
+    pub fn default_model(&self) -> &str {
+        &self.default_model
+    }
+
+    /// Create a non-streaming Anthropic-compatible message request.
     pub async fn create_message(&self, request: MessageRequest) -> Result<MessageResponse> {
         let url = format!("{}/v1/messages", self.base_url);
         let mut request = request;
         request.stream = Some(false);
 
-        let response = send_with_retry(&self.retry, || {
-            self.http_client.post(&url).json(&request)
-        })
-        .await?;
+        let response =
+            send_with_retry(&self.retry, || self.http_client.post(&url).json(&request)).await?;
         Ok(response.json::<MessageResponse>().await?)
     }
 
+    /// Create a streaming Anthropic-compatible message request.
     pub async fn create_message_stream(
         &self,
         request: MessageRequest,
@@ -199,14 +297,14 @@ impl AnthropicClient {
         let mut request = request;
         request.stream = Some(true);
 
-        let response = send_with_retry(&self.retry, || {
-            self.http_client.post(&url).json(&request)
-        })
-        .await?;
+        let response =
+            send_with_retry(&self.retry, || self.http_client.post(&url).json(&request)).await?;
 
         Ok(parse_sse_stream(response.bytes_stream()))
     }
 }
+
+// === Retry + Streaming Helpers ===
 
 async fn send_with_retry<F>(policy: &RetryPolicy, mut build: F) -> Result<reqwest::Response>
 where
@@ -228,7 +326,7 @@ where
 
                 if !policy.enabled || !retryable || attempt >= policy.max_retries {
                     let text = response.text().await.unwrap_or_default();
-                    anyhow::bail!("API request failed with status {}: {}", status, text);
+                    anyhow::bail!("Failed to send API request: HTTP {status}: {text}");
                 }
                 logging::warn(format!(
                     "Retryable HTTP {} (attempt {} of {})",
@@ -257,6 +355,7 @@ where
     }
 }
 
+/// Parse an SSE stream into structured `MiniMax` stream events.
 fn parse_sse_stream(
     stream: impl futures_util::Stream<Item = reqwest::Result<bytes::Bytes>> + Unpin,
 ) -> impl futures_util::Stream<Item = Result<StreamEvent>> {
@@ -274,8 +373,7 @@ fn parse_sse_stream(
                 buffer.drain(..pos + 2);
 
                 for line in block.lines() {
-                    if line.starts_with("data: ") {
-                        let data = &line["data: ".len()..];
+                    if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
                             break;
                         }
@@ -287,5 +385,34 @@ fn parse_sse_stream(
                 }
             }
         }
+    }
+}
+
+// === Trait Implementations ===
+
+impl LlmClient for AnthropicClient {
+    fn provider_name(&self) -> &'static str {
+        "anthropic"
+    }
+
+    fn model(&self) -> &str {
+        &self.default_model
+    }
+
+    async fn create_message(&self, request: MessageRequest) -> Result<MessageResponse> {
+        // Delegate to existing method
+        AnthropicClient::create_message(self, request).await
+    }
+
+    async fn create_message_stream(&self, request: MessageRequest) -> Result<StreamEventBox> {
+        let url = format!("{}/v1/messages", self.base_url);
+        let mut request = request;
+        request.stream = Some(true);
+
+        let response =
+            send_with_retry(&self.retry, || self.http_client.post(&url).json(&request)).await?;
+
+        let stream = parse_sse_stream(response.bytes_stream());
+        Ok(Pin::from(Box::new(stream)))
     }
 }

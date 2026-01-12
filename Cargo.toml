@@ -1,6 +1,6 @@
 [package]
 name = "minimax-cli"
-version = "0.2.0"
+version = "0.2.3"
 edition = "2024"
 description = "Unofficial MiniMax M2.1 CLI - Just run 'minimax' to start chatting"
 license = "MIT"
@@ -14,10 +14,13 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.100"
+arboard = "3.4"
 async-stream = "0.3.6"
+async-trait = "0.1"
 bytes = "1.11.0"
 base64 = "0.22.1"
 clap = { version = "4.5.54", features = ["derive"] }
+clap_complete = "4.5"
 colored = "3.0.0"
 crossterm = "0.28"
 dotenvy = "0.15.7"
@@ -34,3 +37,17 @@ toml = "0.9.7"
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["io"] }
 unicode-width = "0.2"
+uuid = { version = "1.11", features = ["v4"] }
+tokio-stream = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3.16"
+thiserror = "2.0"
+tracing = "0.1"
+wait-timeout = "0.2"
+
+# Platform-specific dependencies
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

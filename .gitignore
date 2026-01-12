@@ -1,4 +1,43 @@
+# Build artifacts
 /target
-/outputs
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+*.rlib
+*.o
+
+# Development
 .env
 .env.*
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+ENV/
+env/
+.venv/
+
+# Logs
+*.log
+firebase-debug.log
+
+# Generated
+outputs/
+*.toml
+
+# Rust
+# Note: Cargo.lock is intentionally NOT ignored for reproducible builds
+firebase-debug.log
+tmp/

@@ -1,5 +1,9 @@
+//! Terminal UI helpers (progress bars, spinners).
+
 use indicatif::{ProgressBar, ProgressStyle};
 
+/// Create a spinner progress indicator.
+#[must_use]
 pub fn spinner(message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
     spinner.set_message(message.to_string());
@@ -11,6 +15,8 @@ pub fn spinner(message: &str) -> ProgressBar {
     spinner
 }
 
+/// Create a progress bar for byte-based transfers.
+#[must_use]
 pub fn progress_bar(total: u64, message: &str) -> ProgressBar {
     let bar = ProgressBar::new(total);
     bar.set_message(message.to_string());

@@ -1,9 +1,18 @@
-use anyhow::{Context, Result};
-use serde::Deserialize;
+//! Configuration loading and defaults for minimax-cli.
+
+use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
 
+use anyhow::{Context, Result};
+use serde::Deserialize;
+
+use crate::hooks::HooksConfig;
+
+// === Types ===
+
+/// Raw retry configuration loaded from config files.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RetryConfig {
     pub enabled: Option<bool>,
@@ -13,6 +22,7 @@ pub struct RetryConfig {
     pub exponential_base: Option<f64>,
 }
 
+/// Resolved retry policy with defaults applied.
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
     pub enabled: bool,
@@ -23,13 +33,17 @@ pub struct RetryPolicy {
 }
 
 impl RetryPolicy {
+    /// Compute the backoff delay for a retry attempt.
+    #[must_use]
     pub fn delay_for_attempt(&self, attempt: u32) -> std::time::Duration {
-        let delay = self.initial_delay * self.exponential_base.powi(attempt as i32);
+        let exponent = i32::try_from(attempt).unwrap_or(i32::MAX);
+        let delay = self.initial_delay * self.exponential_base.powi(exponent);
         let delay = delay.min(self.max_delay);
         std::time::Duration::from_secs_f64(delay)
     }
 }
 
+/// Resolved CLI configuration, including defaults and environment overrides.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     pub api_key: Option<String>,
@@ -48,7 +62,12 @@ pub struct Config {
     pub notes_path: Option<String>,
     pub memory_path: Option<String>,
     pub allow_shell: Option<bool>,
+    pub max_subagents: Option<usize>,
     pub retry: Option<RetryConfig>,
+
+    /// Lifecycle hooks configuration
+    #[serde(default)]
+    pub hooks: Option<HooksConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -58,8 +77,19 @@ struct ConfigFile {
     profiles: Option<HashMap<String, Config>>,
 }
 
+// === Config Loading ===
+
 impl Config {
-    pub fn load(path: Option<PathBuf>, profile: Option<String>) -> Result<Self> {
+    /// Load configuration from disk and merge with environment overrides.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// # use crate::config::Config;
+    /// let config = Config::load(None, None)?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn load(path: Option<PathBuf>, profile: Option<&str>) -> Result<Self> {
         let path = path.or_else(default_config_path);
         let mut config = if let Some(path) = path.as_ref() {
             if path.exists() {
@@ -67,7 +97,7 @@ impl Config {
                     .with_context(|| format!("Failed to read config file: {}", path.display()))?;
                 let parsed: ConfigFile = toml::from_str(&contents)
                     .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
-                apply_profile(parsed, profile.as_deref())
+                apply_profile(parsed, profile)
             } else {
                 Config::default()
             }
@@ -79,6 +109,8 @@ impl Config {
         Ok(config)
     }
 
+    /// Return the `MiniMax` base URL (normalized).
+    #[must_use]
     pub fn minimax_base_url(&self) -> String {
         let base = self
             .base_url
@@ -87,6 +119,8 @@ impl Config {
         normalize_base_url(&base)
     }
 
+    /// Return the Anthropic base URL (normalized).
+    #[must_use]
     pub fn anthropic_base_url(&self) -> String {
         if let Some(base) = self.anthropic_base_url.clone() {
             return base;
@@ -100,26 +134,33 @@ impl Config {
         format!("{}/anthropic", root.trim_end_matches('/'))
     }
 
+    /// Read the `MiniMax` API key from config/environment.
     pub fn minimax_api_key(&self) -> Result<String> {
         self.api_key
             .clone()
-            .context("MINIMAX_API_KEY missing. Set it in config.toml or environment.")
+            .context(
+                "Failed to load MiniMax API key: MINIMAX_API_KEY missing. Set it in config.toml or environment.",
+            )
     }
 
     pub fn anthropic_api_key(&self) -> Result<String> {
         self.anthropic_api_key
             .clone()
             .or_else(|| self.api_key.clone())
-            .context("ANTHROPIC_API_KEY missing. Set it in config.toml or environment.")
+            .context(
+                "Failed to load Anthropic API key: ANTHROPIC_API_KEY missing. Set it in config.toml or environment.",
+            )
     }
 
+    #[allow(dead_code)]
     pub fn output_dir(&self) -> PathBuf {
         self.output_dir
             .clone()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./outputs"))
+            .map_or_else(|| PathBuf::from("./outputs"), PathBuf::from)
     }
 
+    /// Resolve the skills directory path.
+    #[must_use]
     pub fn skills_dir(&self) -> PathBuf {
         self.skills_dir
             .clone()
@@ -128,6 +169,8 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("./skills"))
     }
 
+    /// Resolve the MCP config path.
+    #[must_use]
     pub fn mcp_config_path(&self) -> PathBuf {
         self.mcp_config_path
             .clone()
@@ -136,6 +179,8 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("./mcp.json"))
     }
 
+    /// Resolve the notes file path.
+    #[must_use]
     pub fn notes_path(&self) -> PathBuf {
         self.notes_path
             .clone()
@@ -144,6 +189,8 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("./notes.txt"))
     }
 
+    /// Resolve the memory file path.
+    #[must_use]
     pub fn memory_path(&self) -> PathBuf {
         self.memory_path
             .clone()
@@ -152,10 +199,25 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("./memory.md"))
     }
 
+    /// Return whether shell execution is allowed.
+    #[must_use]
     pub fn allow_shell(&self) -> bool {
         self.allow_shell.unwrap_or(false)
     }
 
+    /// Return the maximum number of concurrent sub-agents.
+    #[must_use]
+    pub fn max_subagents(&self) -> usize {
+        self.max_subagents.unwrap_or(5).clamp(1, 5)
+    }
+
+    /// Get hooks configuration, returning default if not configured.
+    pub fn hooks_config(&self) -> HooksConfig {
+        self.hooks.clone().unwrap_or_default()
+    }
+
+    /// Resolve the effective retry policy with defaults applied.
+    #[must_use]
     pub fn retry_policy(&self) -> RetryPolicy {
         let defaults = RetryPolicy {
             enabled: true,
@@ -179,6 +241,8 @@ impl Config {
     }
 }
 
+// === Defaults ===
+
 fn default_config_path() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".minimax").join("config.toml"))
 }
@@ -198,6 +262,8 @@ fn default_notes_path() -> Option<PathBuf> {
 fn default_memory_path() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".minimax").join("memory.md"))
 }
+
+// === Environment Overrides ===
 
 fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("MINIMAX_API_KEY") {
@@ -230,12 +296,20 @@ fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("MINIMAX_ALLOW_SHELL") {
         config.allow_shell = Some(value == "1" || value.eq_ignore_ascii_case("true"));
     }
+    if let Ok(value) = std::env::var("MINIMAX_MAX_SUBAGENTS")
+        && let Ok(parsed) = value.parse::<usize>()
+    {
+        config.max_subagents = Some(parsed.clamp(1, 5));
+    }
 }
 
 fn normalize_base_url(base: &str) -> String {
     let trimmed = base.trim_end_matches('/');
     let minimax_domains = ["api.minimax.io", "api.minimaxi.com"];
-    if minimax_domains.iter().any(|domain| trimmed.contains(domain)) {
+    if minimax_domains
+        .iter()
+        .any(|domain| trimmed.contains(domain))
+    {
         return trimmed
             .trim_end_matches("/anthropic")
             .trim_end_matches("/v1")
@@ -245,12 +319,11 @@ fn normalize_base_url(base: &str) -> String {
 }
 
 fn apply_profile(config: ConfigFile, profile: Option<&str>) -> Config {
-    if let Some(profile) = profile {
-        if let Some(profiles) = config.profiles {
-            if let Some(override_cfg) = profiles.get(profile) {
-                return merge_config(config.base, override_cfg.clone());
-            }
-        }
+    if let Some(profile) = profile
+        && let Some(profiles) = config.profiles
+        && let Some(override_cfg) = profiles.get(profile)
+    {
+        return merge_config(config.base, override_cfg.clone());
     }
     config.base
 }
@@ -262,10 +335,18 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         base_url: override_cfg.base_url.or(base.base_url),
         anthropic_base_url: override_cfg.anthropic_base_url.or(base.anthropic_base_url),
         default_text_model: override_cfg.default_text_model.or(base.default_text_model),
-        default_image_model: override_cfg.default_image_model.or(base.default_image_model),
-        default_video_model: override_cfg.default_video_model.or(base.default_video_model),
-        default_audio_model: override_cfg.default_audio_model.or(base.default_audio_model),
-        default_music_model: override_cfg.default_music_model.or(base.default_music_model),
+        default_image_model: override_cfg
+            .default_image_model
+            .or(base.default_image_model),
+        default_video_model: override_cfg
+            .default_video_model
+            .or(base.default_video_model),
+        default_audio_model: override_cfg
+            .default_audio_model
+            .or(base.default_audio_model),
+        default_music_model: override_cfg
+            .default_music_model
+            .or(base.default_music_model),
         output_dir: override_cfg.output_dir.or(base.output_dir),
         tools_file: override_cfg.tools_file.or(base.tools_file),
         skills_dir: override_cfg.skills_dir.or(base.skills_dir),
@@ -273,7 +354,9 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         notes_path: override_cfg.notes_path.or(base.notes_path),
         memory_path: override_cfg.memory_path.or(base.memory_path),
         allow_shell: override_cfg.allow_shell.or(base.allow_shell),
+        max_subagents: override_cfg.max_subagents.or(base.max_subagents),
         retry: override_cfg.retry.or(base.retry),
+        hooks: override_cfg.hooks.or(base.hooks),
     }
 }
 
@@ -288,7 +371,7 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 /// Save an API key to the config file. Creates the file if it doesn't exist.
 pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
     let config_path = default_config_path()
-        .context("Could not determine home directory for config")?;
+        .context("Failed to resolve config path: home directory not found.")?;
 
     ensure_parent_dir(&config_path)?;
 
@@ -299,8 +382,10 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
             // Replace existing api_key line
             let mut result = String::new();
             for line in existing.lines() {
-                if line.trim_start().starts_with("api_key") && !line.trim_start().starts_with("anthropic_api_key") {
-                    result.push_str(&format!("api_key = \"{}\"\n", api_key));
+                if line.trim_start().starts_with("api_key")
+                    && !line.trim_start().starts_with("anthropic_api_key")
+                {
+                    let _ = writeln!(result, "api_key = \"{api_key}\"");
                 } else {
                     result.push_str(line);
                     result.push('\n');
@@ -309,21 +394,23 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
             result
         } else {
             // Prepend api_key to existing config
-            format!("api_key = \"{}\"\n{}", api_key, existing)
+            format!("api_key = \"{api_key}\"\n{existing}")
         }
     } else {
         // Create new minimal config
-        format!(r#"# MiniMax CLI Configuration
+        format!(
+            r#"# MiniMax CLI Configuration
 # Get your API key from https://platform.minimax.chat
 
-api_key = "{}"
+api_key = "{api_key}"
 
 # Base URL (default: https://api.minimax.io)
 # base_url = "https://api.minimax.io"
 
 # Default model
 default_text_model = "MiniMax-M2.1"
-"#, api_key)
+"#
+        )
     };
 
     fs::write(&config_path, content)
@@ -355,6 +442,7 @@ mod tests {
             let home_str = OsString::from(home.as_os_str());
             let home_prev = env::var_os("HOME");
             let userprofile_prev = env::var_os("USERPROFILE");
+            // Safety: test-only environment mutation guarded by a global mutex.
             unsafe {
                 env::set_var("HOME", &home_str);
                 env::set_var("USERPROFILE", &home_str);
@@ -369,19 +457,23 @@ mod tests {
     impl Drop for EnvGuard {
         fn drop(&mut self) {
             if let Some(value) = self.home.take() {
+                // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
                     env::set_var("HOME", value);
                 }
             } else {
+                // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
                     env::remove_var("HOME");
                 }
             }
             if let Some(value) = self.userprofile.take() {
+                // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
                     env::set_var("USERPROFILE", value);
                 }
             } else {
+                // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
                     env::remove_var("USERPROFILE");
                 }
@@ -401,11 +493,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let temp_root = env::temp_dir().join(format!(
-            "minimax-cli-test-{}-{}",
-            std::process::id(),
-            nanos
-        ));
+        let temp_root =
+            env::temp_dir().join(format!("minimax-cli-test-{}-{}", std::process::id(), nanos));
         fs::create_dir_all(&temp_root)?;
         let _guard = EnvGuard::new(&temp_root);
 

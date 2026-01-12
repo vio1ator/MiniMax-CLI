@@ -1,14 +1,29 @@
-use crate::config::Config;
-use anyhow::{Context, Result};
-use std::path::PathBuf;
+//! Recursive Language Model (RLM) helpers and REPL workflows.
 
-// Local types for RLM commands (previously in main.rs)
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use colored::Colorize;
+use regex::Regex;
+use rustyline::Editor;
+use rustyline::error::ReadlineError;
+use rustyline::history::DefaultHistory;
+use serde::{Deserialize, Serialize};
+
+use crate::config::Config;
+
+// === Command Args ===
+
+/// Arguments for loading a context into memory.
 #[allow(dead_code)]
 pub struct RlmLoadArgs {
     pub path: PathBuf,
     pub context_id: String,
 }
 
+/// Arguments for searching within a loaded context.
 #[allow(dead_code)]
 pub struct RlmSearchArgs {
     pub context_id: String,
@@ -17,34 +32,40 @@ pub struct RlmSearchArgs {
     pub max_results: usize,
 }
 
+/// Arguments for executing code in the RLM sandbox.
 #[allow(dead_code)]
 pub struct RlmExecArgs {
     pub context_id: String,
     pub code: String,
 }
 
+/// Arguments for retrieving RLM status.
 #[allow(dead_code)]
 pub struct RlmStatusArgs {
     pub context_id: Option<String>,
 }
 
+/// Arguments for saving an RLM session to disk.
 #[allow(dead_code)]
 pub struct RlmSaveSessionArgs {
     pub path: PathBuf,
     pub context_id: String,
 }
 
+/// Arguments for loading a saved session from disk.
 #[allow(dead_code)]
 pub struct RlmLoadSessionArgs {
     pub path: PathBuf,
 }
 
+/// Arguments for entering the RLM REPL.
 #[allow(dead_code)]
 pub struct RlmReplArgs {
     pub context_id: String,
     pub load: Option<PathBuf>,
 }
 
+/// High-level RLM CLI commands.
 #[allow(dead_code)]
 pub enum RlmCommand {
     Load(RlmLoadArgs),
@@ -55,16 +76,10 @@ pub enum RlmCommand {
     LoadSession(RlmLoadSessionArgs),
     Repl(RlmReplArgs),
 }
-use colored::Colorize;
-use regex::Regex;
-use rustyline::error::ReadlineError;
-use rustyline::history::DefaultHistory;
-use rustyline::Editor;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 
+// === System Resources ===
+
+/// System resource snapshot used to size RLM contexts.
 #[derive(Debug, Clone)]
 pub struct SystemResources {
     pub available_memory_mb: Option<u64>,
@@ -72,17 +87,19 @@ pub struct SystemResources {
 }
 
 impl SystemResources {
+    /// Detect available resources and compute a recommended max context size.
+    #[must_use]
     pub fn detect() -> Self {
         let available_memory_mb = Self::get_available_memory_mb();
 
         // Recommend context size based on available memory
         // Rule of thumb: use ~10% of available RAM for context
         let recommended_max_context = match available_memory_mb {
-            Some(mem) if mem >= 32000 => 100_000_000,  // 100MB for 32GB+ RAM
-            Some(mem) if mem >= 16000 => 50_000_000,   // 50MB for 16GB+ RAM
-            Some(mem) if mem >= 8000 => 25_000_000,    // 25MB for 8GB+ RAM
-            Some(mem) if mem >= 4000 => 10_000_000,    // 10MB for 4GB+ RAM
-            _ => 5_000_000,                             // 5MB default
+            Some(mem) if mem >= 32000 => 100_000_000, // 100MB for 32GB+ RAM
+            Some(mem) if mem >= 16000 => 50_000_000,  // 50MB for 16GB+ RAM
+            Some(mem) if mem >= 8000 => 25_000_000,   // 25MB for 8GB+ RAM
+            Some(mem) if mem >= 4000 => 10_000_000,   // 10MB for 4GB+ RAM
+            _ => 5_000_000,                           // 5MB default
         };
 
         Self {
@@ -134,19 +151,28 @@ impl SystemResources {
         None
     }
 
+    /// Print a human-readable resource summary.
     pub fn print_info(&self) {
         println!("{}", "System Resources".cyan().bold());
         if let Some(mem) = self.available_memory_mb {
-            println!("  Available RAM: {} MB ({:.1} GB)", mem, mem as f64 / 1024.0);
+            let mem_f64 = f64::from(u32::try_from(mem).unwrap_or(u32::MAX));
+            println!("  Available RAM: {} MB ({:.1} GB)", mem, mem_f64 / 1024.0);
         } else {
             println!("  Available RAM: Unknown");
         }
-        println!("  Recommended max context: {} chars ({:.1} MB)",
+        let max_context_f64 =
+            f64::from(u32::try_from(self.recommended_max_context).unwrap_or(u32::MAX));
+        println!(
+            "  Recommended max context: {} chars ({:.1} MB)",
             self.recommended_max_context,
-            self.recommended_max_context as f64 / (1024.0 * 1024.0));
+            max_context_f64 / (1024.0 * 1024.0)
+        );
     }
 }
 
+// === Context Storage ===
+
+/// In-memory context buffer used by the RLM REPL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RlmContext {
     pub id: String,
@@ -158,6 +184,8 @@ pub struct RlmContext {
 }
 
 impl RlmContext {
+    /// Create a new context with derived line/char counts.
+    #[must_use]
     pub fn new(id: &str, content: String, source_path: Option<String>) -> Self {
         let line_count = content.lines().count();
         let char_count = content.len();
@@ -171,11 +199,15 @@ impl RlmContext {
         }
     }
 
+    /// Peek into the context by character range.
+    #[must_use]
     pub fn peek(&self, start: usize, end: Option<usize>) -> &str {
         let end = end.unwrap_or(self.content.len()).min(self.content.len());
         &self.content[start.min(self.content.len())..end]
     }
 
+    /// Return line slices with 1-based line numbers.
+    #[must_use]
     pub fn lines(&self, start: usize, end: Option<usize>) -> Vec<(usize, &str)> {
         let lines: Vec<&str> = self.content.lines().collect();
         let end = end.unwrap_or(lines.len()).min(lines.len());
@@ -186,7 +218,13 @@ impl RlmContext {
             .collect()
     }
 
-    pub fn search(&self, pattern: &str, context_lines: usize, max_results: usize) -> Result<Vec<SearchResult>> {
+    /// Search for regex matches with optional context lines.
+    pub fn search(
+        &self,
+        pattern: &str,
+        context_lines: usize,
+        max_results: usize,
+    ) -> Result<Vec<SearchResult>> {
         let regex = Regex::new(pattern).context("Invalid regex pattern")?;
         let lines: Vec<&str> = self.content.lines().collect();
         let mut results = Vec::new();
@@ -201,16 +239,16 @@ impl RlmContext {
                     .map(|(j, l)| {
                         let line_num = start + j + 1;
                         if start + j == i {
-                            format!("{:>5} > {}", line_num, l)
+                            format!("{line_num:>5} > {l}")
                         } else {
-                            format!("{:>5}   {}", line_num, l)
+                            format!("{line_num:>5}   {l}")
                         }
                     })
                     .collect();
 
                 results.push(SearchResult {
                     line_num: i + 1,
-                    match_line: line.to_string(),
+                    match_line: (*line).to_string(),
                     context,
                 });
 
@@ -223,6 +261,8 @@ impl RlmContext {
         Ok(results)
     }
 
+    /// Chunk the context into fixed-size segments with overlap.
+    #[must_use]
     pub fn chunk(&self, chunk_size: usize, overlap: usize) -> Vec<ChunkInfo> {
         let mut chunks = Vec::new();
         let mut start = 0;
@@ -252,6 +292,7 @@ impl RlmContext {
     }
 }
 
+/// Search match result with surrounding context lines.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub line_num: usize,
@@ -259,6 +300,7 @@ pub struct SearchResult {
     pub context: Vec<String>,
 }
 
+/// Chunk metadata for context navigation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkInfo {
     pub index: usize,
@@ -267,6 +309,7 @@ pub struct ChunkInfo {
     pub preview: String,
 }
 
+/// Stored RLM session state for persistence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RlmSession {
     pub contexts: HashMap<String, RlmContext>,
@@ -310,7 +353,9 @@ pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
             let source = args.path.to_string_lossy().to_string();
             session.load_context(&args.context_id, content, Some(source));
 
-            let ctx = session.get_context(&args.context_id).unwrap();
+            let ctx = session
+                .get_context(&args.context_id)
+                .expect("context should exist after load_context");
             println!("{}", "Context loaded successfully!".green());
             println!("  ID: {}", ctx.id.cyan());
             println!("  Source: {}", ctx.source_path.as_deref().unwrap_or("N/A"));
@@ -330,7 +375,7 @@ pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
                 for result in results {
                     println!("{}", "─".repeat(60).dimmed());
                     for line in &result.context {
-                        println!("{}", line);
+                        println!("{line}");
                     }
                 }
                 println!("{}", "─".repeat(60).dimmed());
@@ -341,11 +386,11 @@ pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
             let ctx = RlmContext::new(&args.context_id, content, None);
 
             let result = execute_expr(&ctx, &args.code)?;
-            println!("{}", result);
+            println!("{result}");
         }
         RlmCommand::Status(args) => {
             if let Some(id) = args.context_id {
-                println!("Context '{}' status: (no persistent session)", id);
+                println!("Context '{id}' status: (no persistent session)");
             } else {
                 println!("{}", "RLM Session Status".cyan().bold());
                 println!("Note: For persistent sessions, use 'rlm repl' or save/load session.");
@@ -360,10 +405,13 @@ pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
             let content = fs::read_to_string(&args.path)?;
             session = serde_json::from_str(&content)?;
             println!("Session loaded from {}", args.path.display());
-            println!("Contexts: {:?}", session.contexts.keys().collect::<Vec<_>>());
+            println!(
+                "Contexts: {:?}",
+                session.contexts.keys().collect::<Vec<_>>()
+            );
         }
         RlmCommand::Repl(args) => {
-            run_repl(args.context_id, args.load)?;
+            run_repl(&args.context_id, args.load.as_deref())?;
         }
     }
 
@@ -373,8 +421,7 @@ pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
 fn load_context_from_stdin_or_error(context_id: &str) -> Result<String> {
     // For now, return an error - real implementation would track sessions
     anyhow::bail!(
-        "No context '{}' loaded. Use 'rlm load' first or 'rlm repl' for interactive mode.",
-        context_id
+        "Failed to load context '{context_id}': no context loaded. Use 'rlm load' or 'rlm repl'."
     )
 }
 
@@ -393,7 +440,7 @@ fn execute_expr(ctx: &RlmContext, code: &str) -> Result<String> {
 
     if code.starts_with("peek(") && code.ends_with(')') {
         let args = &code[5..code.len() - 1];
-        let parts: Vec<&str> = args.split(',').map(|s| s.trim()).collect();
+        let parts: Vec<&str> = args.split(',').map(str::trim).collect();
         let start: usize = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
         let end: Option<usize> = parts.get(1).and_then(|s| s.parse().ok());
         return Ok(ctx.peek(start, end).to_string());
@@ -401,13 +448,13 @@ fn execute_expr(ctx: &RlmContext, code: &str) -> Result<String> {
 
     if code.starts_with("lines(") && code.ends_with(')') {
         let args = &code[6..code.len() - 1];
-        let parts: Vec<&str> = args.split(',').map(|s| s.trim()).collect();
+        let parts: Vec<&str> = args.split(',').map(str::trim).collect();
         let start: usize = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
         let end: Option<usize> = parts.get(1).and_then(|s| s.parse().ok());
         let lines = ctx.lines(start, end);
         return Ok(lines
             .iter()
-            .map(|(n, l)| format!("{:>5} {}", n, l))
+            .map(|(n, l)| format!("{n:>5} {l}"))
             .collect::<Vec<_>>()
             .join("\n"));
     }
@@ -427,13 +474,21 @@ fn execute_expr(ctx: &RlmContext, code: &str) -> Result<String> {
 
     if code.starts_with("chunk(") && code.ends_with(')') {
         let args = &code[6..code.len() - 1];
-        let parts: Vec<&str> = args.split(',').map(|s| s.trim()).collect();
+        let parts: Vec<&str> = args.split(',').map(str::trim).collect();
         let size: usize = parts.first().and_then(|s| s.parse().ok()).unwrap_or(2000);
         let overlap: usize = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(200);
         let chunks = ctx.chunk(size, overlap);
         let output: Vec<String> = chunks
             .iter()
-            .map(|c| format!("Chunk {}: chars {}..{} - {}", c.index, c.start_char, c.end_char, &c.preview[..50.min(c.preview.len())]))
+            .map(|c| {
+                format!(
+                    "Chunk {}: chars {}..{} - {}",
+                    c.index,
+                    c.start_char,
+                    c.end_char,
+                    &c.preview[..50.min(c.preview.len())]
+                )
+            })
             .collect();
         return Ok(output.join("\n"));
     }
@@ -442,7 +497,7 @@ fn execute_expr(ctx: &RlmContext, code: &str) -> Result<String> {
         let lines = ctx.lines(0, Some(10));
         return Ok(lines
             .iter()
-            .map(|(n, l)| format!("{:>5} {}", n, l))
+            .map(|(n, l)| format!("{n:>5} {l}"))
             .collect::<Vec<_>>()
             .join("\n"));
     }
@@ -452,18 +507,17 @@ fn execute_expr(ctx: &RlmContext, code: &str) -> Result<String> {
         let lines = ctx.lines(start, None);
         return Ok(lines
             .iter()
-            .map(|(n, l)| format!("{:>5} {}", n, l))
+            .map(|(n, l)| format!("{n:>5} {l}"))
             .collect::<Vec<_>>()
             .join("\n"));
     }
 
     anyhow::bail!(
-        "Unknown expression: {}. Supported: len, line_count, peek(start, end), lines(start, end), search(pattern), chunk(size, overlap), head, tail",
-        code
+        "Failed to evaluate expression: unknown expression '{code}'. Supported: len, line_count, peek(start, end), lines(start, end), search(pattern), chunk(size, overlap), head, tail"
     )
 }
 
-fn run_repl(context_id: String, initial_load: Option<std::path::PathBuf>) -> Result<()> {
+fn run_repl(context_id: &str, initial_load: Option<&std::path::Path>) -> Result<()> {
     println!("{}", "MiniMax RLM Sandbox".bold().cyan());
     println!("Recursive Language Model - Local REPL Environment");
     println!("Type expressions or /help for commands.\n");
@@ -477,12 +531,14 @@ fn run_repl(context_id: String, initial_load: Option<std::path::PathBuf>) -> Res
 
     // Load initial file if provided
     if let Some(path) = initial_load {
-        let content = fs::read_to_string(&path)
+        let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read file: {}", path.display()))?;
         let source = path.to_string_lossy().to_string();
-        session.load_context(&context_id, content, Some(source));
+        session.load_context(context_id, content, Some(source));
 
-        let ctx = session.get_context(&context_id).unwrap();
+        let ctx = session
+            .get_context(context_id)
+            .expect("context should exist after load_context");
         println!("{}", "Context loaded!".green());
         println!("  Lines: {} | Chars: {}\n", ctx.line_count, ctx.char_count);
     }
@@ -522,8 +578,10 @@ fn run_repl(context_id: String, initial_load: Option<std::path::PathBuf>) -> Res
                     match fs::read_to_string(path) {
                         Ok(content) => {
                             let source = path.to_string_lossy().to_string();
-                            session.load_context(&context_id, content, Some(source));
-                            let ctx = session.get_context(&context_id).unwrap();
+                            session.load_context(context_id, content, Some(source));
+                            let ctx = session
+                                .get_context(context_id)
+                                .expect("context should exist after load_context");
                             println!("{}", "Loaded!".green());
                             println!("  Lines: {} | Chars: {}", ctx.line_count, ctx.char_count);
                         }
@@ -543,16 +601,16 @@ fn run_repl(context_id: String, initial_load: Option<std::path::PathBuf>) -> Res
                 }
 
                 // Execute expression
-                if let Some(ctx) = session.get_context(&context_id) {
+                if let Some(ctx) = session.get_context(context_id) {
                     match execute_expr(ctx, input) {
-                        Ok(result) => println!("{}", result),
+                        Ok(result) => println!("{result}"),
                         Err(e) => println!("{}: {}", "Error".red(), e),
                     }
                 } else {
                     println!("{}: No context loaded. Use /load <path>", "Error".yellow());
                 }
             }
-            Err(ReadlineError::Interrupted) => continue,
+            Err(ReadlineError::Interrupted) => {}
             Err(ReadlineError::Eof) => break,
             Err(err) => {
                 println!("{}: {}", "Error".red(), err);
@@ -591,9 +649,12 @@ fn print_status(session: &RlmSession) {
     println!("  Active context: {}", session.active_context);
     println!("  Loaded contexts: {}", session.contexts.len());
     for (id, ctx) in &session.contexts {
-        println!("    {}: {} lines, {} chars", id, ctx.line_count, ctx.char_count);
+        println!(
+            "    {}: {} lines, {} chars",
+            id, ctx.line_count, ctx.char_count
+        );
         if let Some(ref source) = ctx.source_path {
-            println!("      Source: {}", source);
+            println!("      Source: {source}");
         }
     }
 }
@@ -604,7 +665,7 @@ mod tests {
 
     fn format_lines(start: usize, end: usize) -> String {
         (start..=end)
-            .map(|i| format!("{:>5} line {}", i, i))
+            .map(|i| format!("{i:>5} line {i}"))
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -612,7 +673,7 @@ mod tests {
     #[test]
     fn rlm_exec_len_head_tail_lines() -> Result<()> {
         let content = (1..=15)
-            .map(|i| format!("line {}", i))
+            .map(|i| format!("line {i}"))
             .collect::<Vec<_>>()
             .join("\n");
         let ctx = RlmContext::new("test", content, None);

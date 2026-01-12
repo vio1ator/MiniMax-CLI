@@ -1,11 +1,20 @@
-use base64::Engine;
-use crate::client::MiniMaxClient;
-use crate::utils::{extension_from_url, output_path, pretty_json, timestamped_filename, write_bytes};
-use anyhow::{Context, Result};
-use colored::Colorize;
-use serde_json::{json, Value};
-use std::path::PathBuf;
+//! Music generation API wrappers for `MiniMax`.
 
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use base64::Engine;
+use colored::Colorize;
+use serde_json::{Value, json};
+
+use crate::client::MiniMaxClient;
+use crate::utils::{
+    extension_from_url, output_path, pretty_json, timestamped_filename, write_bytes,
+};
+
+// === Types ===
+
+/// Options for music generation requests.
 pub struct MusicGenerateOptions {
     pub model: String,
     pub prompt: String,
@@ -15,6 +24,8 @@ pub struct MusicGenerateOptions {
     pub audio_setting_json: Option<String>,
     pub output_dir: PathBuf,
 }
+
+// === API Calls ===
 
 pub async fn generate(client: &MiniMaxClient, options: MusicGenerateOptions) -> Result<()> {
     let mut body = json!({
@@ -31,7 +42,7 @@ pub async fn generate(client: &MiniMaxClient, options: MusicGenerateOptions) -> 
     }
     if let Some(audio_setting) = options.audio_setting_json {
         let parsed: Value = serde_json::from_str(&audio_setting)
-            .context("Failed to parse --audio-setting-json as JSON.")?;
+            .context("Failed to parse audio_setting_json: expected JSON.")?;
         body["audio_setting"] = parsed;
     }
 
@@ -65,7 +76,7 @@ pub async fn generate(client: &MiniMaxClient, options: MusicGenerateOptions) -> 
 async fn handle_music_response(
     client: &MiniMaxClient,
     response: &Value,
-    output_dir: &PathBuf,
+    output_dir: &Path,
 ) -> Result<()> {
     if let Some(url) = response
         .get("audio_url")
@@ -88,7 +99,7 @@ async fn handle_music_response(
     {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(b64.trim())
-            .context("Failed to decode music payload.")?;
+            .context("Failed to decode music payload: invalid base64 data.")?;
         let filename = timestamped_filename("music", "wav");
         let path = output_path(output_dir, &filename);
         write_bytes(&path, &bytes)?;
@@ -96,7 +107,10 @@ async fn handle_music_response(
         return Ok(());
     }
 
-    println!("{}", "No audio payload found in response.".yellow());
+    println!(
+        "{}",
+        "Failed to generate music: no audio payload found in response.".yellow()
+    );
     println!("{}", pretty_json(response));
     Ok(())
 }
