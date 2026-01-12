@@ -111,6 +111,7 @@ impl EngineHandle {
 pub struct Engine {
     config: EngineConfig,
     anthropic_client: Option<AnthropicClient>,
+    anthropic_client_error: Option<String>,
     session: Session,
     subagent_manager: SharedSubAgentManager,
     rx_op: mpsc::Receiver<Op>,
@@ -143,7 +144,10 @@ impl Engine {
         let cancel_token = CancellationToken::new();
 
         // Create clients for both providers
-        let anthropic_client = AnthropicClient::new(api_config).ok();
+        let (anthropic_client, anthropic_client_error) = match AnthropicClient::new(api_config) {
+            Ok(client) => (Some(client), None),
+            Err(err) => (None, Some(err.to_string())),
+        };
 
         let mut session = Session::new(
             config.model.clone(),
@@ -165,6 +169,7 @@ impl Engine {
         let engine = Engine {
             config,
             anthropic_client,
+            anthropic_client_error,
             session,
             subagent_manager,
             rx_op,
@@ -209,13 +214,14 @@ impl Engine {
                 }
                 Op::SpawnSubAgent { prompt } => {
                     let Some(client) = self.anthropic_client.clone() else {
-                        let _ = self
-                            .tx_event
-                            .send(Event::error(
-                                "Failed to spawn sub-agent: no Anthropic API client configured",
-                                false,
-                            ))
-                            .await;
+                        let message = self
+                            .anthropic_client_error
+                            .as_deref()
+                            .map(|err| format!("Failed to spawn sub-agent: {err}"))
+                            .unwrap_or_else(|| {
+                                "Failed to spawn sub-agent: API client not configured".to_string()
+                            });
+                        let _ = self.tx_event.send(Event::error(message, false)).await;
                         continue;
                     };
 
@@ -315,13 +321,12 @@ impl Engine {
 
         // Check if we have the appropriate client
         if self.anthropic_client.is_none() {
-            let _ = self
-                .tx_event
-                .send(Event::error(
-                    "Failed to send message: no Anthropic API client configured",
-                    false,
-                ))
-                .await;
+            let message = self
+                .anthropic_client_error
+                .as_deref()
+                .map(|err| format!("Failed to send message: {err}"))
+                .unwrap_or_else(|| "Failed to send message: API client not configured".to_string());
+            let _ = self.tx_event.send(Event::error(message, false)).await;
             return;
         }
 

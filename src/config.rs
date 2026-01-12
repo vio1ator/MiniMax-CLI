@@ -148,7 +148,7 @@ impl Config {
             .clone()
             .or_else(|| self.api_key.clone())
             .context(
-                "Failed to load Anthropic API key: ANTHROPIC_API_KEY missing. Set it in config.toml or environment.",
+                "Failed to load API key: set ANTHROPIC_API_KEY or MINIMAX_API_KEY in config.toml or environment.",
             )
     }
 

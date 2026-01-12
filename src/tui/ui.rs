@@ -9,7 +9,8 @@ use anyhow::Result;
 use crossterm::{
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+        MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -577,6 +578,17 @@ async fn run_event_loop(
 
             // Global keybindings
             match key.code {
+                KeyCode::Char('c') | KeyCode::Char('C') if is_copy_shortcut(&key) => {
+                    if app.transcript_selection.is_active() {
+                        if let Some(text) = selection_to_text(app) {
+                            if app.clipboard.write_text(&text).is_ok() {
+                                app.status_message = Some("Selection copied".to_string());
+                            } else {
+                                app.status_message = Some("Copy failed".to_string());
+                            }
+                        }
+                    }
+                }
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     // Cancel current request or exit
                     if app.is_loading {
@@ -708,17 +720,6 @@ async fn run_event_loop(
                 }
                 KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.clear_input();
-                }
-                KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if app.transcript_selection.is_active()
-                        && let Some(text) = selection_to_text(app)
-                    {
-                        if app.clipboard.write_text(&text).is_ok() {
-                            app.status_message = Some("Selection copied".to_string());
-                        } else {
-                            app.status_message = Some("Copy failed".to_string());
-                        }
-                    }
                 }
                 KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     app.paste_from_clipboard();
@@ -1011,7 +1012,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App) {
     if app.transcript_selection.is_active() {
         spans.push(Span::raw(" | "));
         spans.push(Span::styled(
-            "Ctrl+Y copy selection",
+            copy_selection_hint(),
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -1438,6 +1439,30 @@ fn selection_to_text(app: &App) -> Option<String> {
         }
     }
     Some(out)
+}
+
+fn is_copy_shortcut(key: &KeyEvent) -> bool {
+    let is_c = matches!(key.code, KeyCode::Char('c') | KeyCode::Char('C'));
+    if !is_c {
+        return false;
+    }
+
+    if key.modifiers.contains(KeyModifiers::SUPER) {
+        return true;
+    }
+
+    key.modifiers.contains(KeyModifiers::CONTROL) && key.modifiers.contains(KeyModifiers::SHIFT)
+}
+
+fn copy_selection_hint() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Cmd+C copy selection"
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Ctrl+Shift+C copy selection"
+    }
 }
 
 fn line_to_plain(line: &Line<'static>) -> String {
