@@ -121,13 +121,13 @@ pub fn save_session(app: &mut App, path: Option<&str>) -> CommandResult {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(std::path::Path::to_path_buf);
-    if let Some(dir) = parent_dir {
-        if let Err(err) = fs::create_dir_all(&dir) {
-            return CommandResult::error(format!(
-                "Failed to create directory {}: {err}",
-                dir.display()
-            ));
-        }
+    if let Some(dir) = parent_dir
+        && let Err(err) = fs::create_dir_all(&dir)
+    {
+        return CommandResult::error(format!(
+            "Failed to create directory {}: {err}",
+            dir.display()
+        ));
     }
 
     let json = match serde_json::to_string_pretty(&app.rlm_session) {

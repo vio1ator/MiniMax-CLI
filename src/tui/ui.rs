@@ -708,25 +708,23 @@ async fn run_event_loop(
                                     }
                                 }
                             }
+                        } else if app.mode == AppMode::Rlm {
+                            handle_rlm_input(app, input);
                         } else {
-                            if app.mode == AppMode::Rlm {
-                                handle_rlm_input(app, input);
+                            let queued = if let Some(mut draft) = app.queued_draft.take() {
+                                draft.display = input;
+                                draft
                             } else {
-                                let queued = if let Some(mut draft) = app.queued_draft.take() {
-                                    draft.display = input;
-                                    draft
-                                } else {
-                                    build_queued_message(app, input)
-                                };
-                                if app.is_loading {
-                                    app.queue_message(queued);
-                                    app.status_message = Some(format!(
-                                        "Queued {} message(s) - /queue to view/edit",
-                                        app.queued_message_count()
-                                    ));
-                                } else {
-                                    dispatch_user_message(app, &engine_handle, queued).await?;
-                                }
+                                build_queued_message(app, input)
+                            };
+                            if app.is_loading {
+                                app.queue_message(queued);
+                                app.status_message = Some(format!(
+                                    "Queued {} message(s) - /queue to view/edit",
+                                    app.queued_message_count()
+                                ));
+                            } else {
+                                dispatch_user_message(app, &engine_handle, queued).await?;
                             }
                         }
                     }
