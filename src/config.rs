@@ -598,8 +598,13 @@ mod tests {
             skills_dir: Some("~/.minimax/skills".to_string()),
             ..Default::default()
         };
-        let expected_skills = temp_root.join(".minimax").join("skills");
-        assert_eq!(config.skills_dir(), expected_skills);
+        let expected_home = dirs::home_dir().expect("home dir not found");
+        let expected_skills = expected_home.join(".minimax").join("skills");
+        let actual_skills = config.skills_dir();
+        assert_eq!(
+            actual_skills.components().collect::<Vec<_>>(),
+            expected_skills.components().collect::<Vec<_>>()
+        );
 
         let absolute_path = temp_root.join("absolute-path");
         let absolute_str = absolute_path.to_string_lossy().to_string();
