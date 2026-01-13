@@ -8,7 +8,7 @@
 
 #![allow(dead_code)] // Public API - session persistence functions for future TUI integration
 
-use crate::models::{ContentBlock, Message};
+use crate::models::{ContentBlock, Message, SystemPrompt};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -200,7 +200,7 @@ pub fn create_saved_session(
     model: &str,
     workspace: &Path,
     total_tokens: u64,
-    system_prompt: Option<&str>,
+    system_prompt: Option<&SystemPrompt>,
 ) -> SavedSession {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
@@ -229,7 +229,7 @@ pub fn create_saved_session(
             workspace: workspace.to_path_buf(),
         },
         messages: messages.to_vec(),
-        system_prompt: system_prompt.map(String::from),
+        system_prompt: system_prompt_to_string(system_prompt),
     }
 }
 
@@ -238,12 +238,28 @@ pub fn update_session(
     mut session: SavedSession,
     messages: &[Message],
     total_tokens: u64,
+    system_prompt: Option<&SystemPrompt>,
 ) -> SavedSession {
     session.messages = messages.to_vec();
     session.metadata.updated_at = Utc::now();
     session.metadata.message_count = messages.len();
     session.metadata.total_tokens = total_tokens;
+    session.system_prompt = system_prompt_to_string(system_prompt).or(session.system_prompt);
     session
+}
+
+fn system_prompt_to_string(system_prompt: Option<&SystemPrompt>) -> Option<String> {
+    match system_prompt {
+        Some(SystemPrompt::Text(text)) => Some(text.clone()),
+        Some(SystemPrompt::Blocks(blocks)) => Some(
+            blocks
+                .iter()
+                .map(|b| b.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n"),
+        ),
+        None => None,
+    }
 }
 
 /// Truncate a string to create a title
@@ -416,7 +432,7 @@ mod tests {
             make_test_message("assistant", "Hi!"),
         ];
 
-        let updated = update_session(session, &new_messages, 100);
+        let updated = update_session(session, &new_messages, 100, None);
         assert_eq!(updated.messages.len(), 2);
         assert_eq!(updated.metadata.total_tokens, 100);
     }

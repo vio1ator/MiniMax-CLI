@@ -157,6 +157,17 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
     // Spawn the Engine - it will handle all API communication
     let engine_handle = spawn_engine(engine_config, config);
 
+    if !app.api_messages.is_empty() {
+        let _ = engine_handle
+            .send(Op::SyncSession {
+                messages: app.api_messages.clone(),
+                system_prompt: app.system_prompt.clone(),
+                model: app.model.clone(),
+                workspace: app.workspace.clone(),
+            })
+            .await;
+    }
+
     // Fire session start hook
     {
         let context = app.base_hook_context();
@@ -322,6 +333,7 @@ async fn run_event_loop(
                                         existing,
                                         &app.api_messages,
                                         u64::from(app.total_tokens),
+                                        app.system_prompt.as_ref(),
                                     )
                                 } else {
                                     // Session was deleted, create new
@@ -330,7 +342,7 @@ async fn run_event_loop(
                                         &app.model,
                                         &app.workspace,
                                         u64::from(app.total_tokens),
-                                        None,
+                                        app.system_prompt.as_ref(),
                                     )
                                 }
                             } else {
@@ -340,7 +352,7 @@ async fn run_event_loop(
                                     &app.model,
                                     &app.workspace,
                                     u64::from(app.total_tokens),
-                                    None,
+                                    app.system_prompt.as_ref(),
                                 )
                             };
 
@@ -510,8 +522,18 @@ async fn run_event_loop(
 
             // Handle help popup
             if app.show_help {
-                if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter) {
-                    app.show_help = false;
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter => {
+                        app.show_help = false;
+                        app.help_scroll = 0;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.help_scroll = app.help_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.help_scroll = app.help_scroll.saturating_add(1);
+                    }
+                    _ => {}
                 }
                 continue;
             }
@@ -660,6 +682,21 @@ async fn run_event_loop(
                                     AppAction::LoadSession(path) => {
                                         app.status_message =
                                             Some(format!("Session loaded from {}", path.display()));
+                                    }
+                                    AppAction::SyncSession {
+                                        messages,
+                                        system_prompt,
+                                        model,
+                                        workspace,
+                                    } => {
+                                        let _ = engine_handle
+                                            .send(Op::SyncSession {
+                                                messages,
+                                                system_prompt,
+                                                model,
+                                                workspace,
+                                            })
+                                            .await;
                                     }
                                     AppAction::SendMessage(content) => {
                                         let queued = build_queued_message(app, content);
@@ -830,7 +867,7 @@ fn render(f: &mut Frame, app: &mut App) {
     render_footer(f, chunks[3], app);
 
     if app.show_help {
-        render_help_popup(f, size);
+        render_help_popup(f, size, app.help_scroll);
     }
 
     // Render approval overlay if visible
@@ -1566,10 +1603,9 @@ fn slice_text(text: &str, start: usize, end: usize) -> String {
     out
 }
 
-#[allow(clippy::too_many_lines)]
-fn render_help_popup(f: &mut Frame, area: Rect) {
-    let popup_width = 60.min(area.width - 4);
-    let popup_height = 20.min(area.height - 4);
+fn render_help_popup(f: &mut Frame, area: Rect, scroll: usize) {
+    let popup_width = 65.min(area.width - 4);
+    let popup_height = 24.min(area.height - 4);
 
     let popup_area = Rect {
         x: (area.width - popup_width) / 2,
@@ -1580,7 +1616,8 @@ fn render_help_popup(f: &mut Frame, area: Rect) {
 
     f.render_widget(Clear, popup_area);
 
-    let mut help_text = vec![
+    // Build all help lines
+    let mut help_lines: Vec<Line> = vec![
         Line::from(vec![Span::styled(
             "MiniMax CLI Help",
             Style::default().fg(MINIMAX_RED).bold(),
@@ -1602,50 +1639,52 @@ fn render_help_popup(f: &mut Frame, area: Rect) {
         )]),
     ];
 
-    let fixed_lines = 12u16;
-    let max_command_lines = popup_height.saturating_sub(fixed_lines) as usize;
-    let total_commands = commands::COMMANDS.len();
-    let show_more = total_commands > max_command_lines && max_command_lines > 0;
-    let list_limit = if show_more {
-        max_command_lines.saturating_sub(1)
-    } else {
-        max_command_lines
-    };
-
-    if list_limit == 0 && total_commands > 0 {
-        help_text.push(Line::from("  Use /help to list commands"));
-    } else {
-        for cmd in commands::COMMANDS.iter().take(list_limit) {
-            help_text.push(Line::from(format!(
-                "  /{:<10} - {}",
-                cmd.name, cmd.description
-            )));
-        }
-        if show_more {
-            let remaining = total_commands.saturating_sub(list_limit);
-            help_text.push(Line::from(format!(
-                "  ... and {remaining} more (use /help)"
-            )));
-        }
+    // Add all commands
+    for cmd in commands::COMMANDS.iter() {
+        help_lines.push(Line::from(format!(
+            "  /{:<12} - {}",
+            cmd.name, cmd.description
+        )));
     }
 
-    help_text.push(Line::from(""));
-    help_text.push(Line::from(vec![Span::styled(
-        "Press Esc or Enter to close",
-        Style::default().fg(Color::DarkGray),
+    help_lines.push(Line::from(""));
+    help_lines.push(Line::from(vec![Span::styled(
+        "Keys:",
+        Style::default().fg(MINIMAX_CORAL).bold(),
     )]));
+    help_lines.push(Line::from("  Enter        - Send message"));
+    help_lines.push(Line::from("  Esc          - Cancel request"));
+    help_lines.push(Line::from("  Ctrl+C       - Exit"));
+    help_lines.push(Line::from("  Up/Down      - Scroll this help"));
+    help_lines.push(Line::from(""));
 
-    let help = Paragraph::new(help_text)
+    let total_lines = help_lines.len();
+    let visible_lines = (popup_height as usize).saturating_sub(3); // account for border + footer
+    let max_scroll = total_lines.saturating_sub(visible_lines);
+    let scroll = scroll.min(max_scroll);
+
+    // Show scroll indicator if needed
+    let scroll_indicator = if total_lines > visible_lines {
+        format!(" [{}/{} ↑↓] ", scroll + 1, max_scroll + 1)
+    } else {
+        String::new()
+    };
+
+    let help = Paragraph::new(help_lines)
         .block(
             Block::default()
                 .title(Line::from(vec![Span::styled(
                     " Help ",
                     Style::default().fg(MINIMAX_RED).bold(),
                 )]))
+                .title_bottom(Line::from(vec![
+                    Span::styled(" Esc to close ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(scroll_indicator, Style::default().fg(MINIMAX_CORAL)),
+                ]))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(MINIMAX_CORAL)),
         )
-        .wrap(Wrap { trim: false });
+        .scroll((scroll as u16, 0));
 
     f.render_widget(help, popup_area);
 }

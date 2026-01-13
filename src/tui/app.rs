@@ -123,6 +123,7 @@ pub struct App {
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
     pub show_help: bool,
+    pub help_scroll: usize,
     pub auto_compact: bool,
     #[allow(dead_code)]
     pub compact_threshold: usize,
@@ -321,6 +322,7 @@ impl App {
             input_history: Vec::new(),
             history_index: None,
             show_help: false,
+            help_scroll: 0,
             auto_compact: false,
             compact_threshold: 50000,
             total_tokens: 0,
@@ -633,6 +635,12 @@ pub enum AppAction {
     SaveSession(PathBuf),
     #[allow(dead_code)] // For explicit /load command
     LoadSession(PathBuf),
+    SyncSession {
+        messages: Vec<Message>,
+        system_prompt: Option<SystemPrompt>,
+        model: String,
+        workspace: PathBuf,
+    },
     SendMessage(String),
     ListSubAgents,
 }

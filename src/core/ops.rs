@@ -3,7 +3,9 @@
 //! These operations flow from the TUI to the engine via a channel,
 //! allowing the UI to remain responsive while the engine processes requests.
 
+use crate::models::{Message, SystemPrompt};
 use crate::tui::app::AppMode;
+use std::path::PathBuf;
 
 /// Operations that can be submitted to the engine.
 #[derive(Debug, Clone)]
@@ -37,6 +39,14 @@ pub enum Op {
 
     /// Update the model being used
     SetModel { model: String },
+
+    /// Sync engine session state (used for resume/load)
+    SyncSession {
+        messages: Vec<Message>,
+        system_prompt: Option<SystemPrompt>,
+        model: String,
+        workspace: PathBuf,
+    },
 
     /// Shutdown the engine
     Shutdown,

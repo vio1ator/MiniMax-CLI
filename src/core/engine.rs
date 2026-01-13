@@ -434,6 +434,29 @@ impl Engine {
                         )))
                         .await;
                 }
+                Op::SyncSession {
+                    messages,
+                    system_prompt,
+                    model,
+                    workspace,
+                } => {
+                    self.session.messages = messages;
+                    self.session.system_prompt = system_prompt;
+                    self.session.model = model;
+                    self.session.workspace = workspace.clone();
+                    self.config.model.clone_from(&self.session.model);
+                    self.config.workspace = workspace.clone();
+                    let ctx = crate::project_context::load_project_context_with_parents(&workspace);
+                    self.session.project_context = if ctx.has_instructions() {
+                        Some(ctx)
+                    } else {
+                        None
+                    };
+                    let _ = self
+                        .tx_event
+                        .send(Event::status("Session context synced".to_string()))
+                        .await;
+                }
                 Op::Shutdown => {
                     break;
                 }
@@ -678,6 +701,7 @@ impl Engine {
             let mut in_tool_call_block = false;
             let mut pending_message_complete = false;
             let mut last_text_index: Option<usize> = None;
+            let mut stream_errors = 0u32;
 
             // Process stream events
             while let Some(event_result) = stream.next().await {
@@ -688,8 +712,12 @@ impl Engine {
                 let event = match event_result {
                     Ok(e) => e,
                     Err(e) => {
+                        stream_errors = stream_errors.saturating_add(1);
                         let _ = self.tx_event.send(Event::error(e.to_string(), true)).await;
-                        break;
+                        if stream_errors >= 3 {
+                            break;
+                        }
+                        continue;
                     }
                 };
 

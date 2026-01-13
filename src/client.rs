@@ -377,7 +377,13 @@ fn parse_sse_stream(
         let mut stream = stream;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result?;
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(err) => {
+                    logging::warn(format!("SSE stream chunk error: {err}"));
+                    continue;
+                }
+            };
             let s = String::from_utf8_lossy(&chunk);
             buffer.push_str(&s);
 
@@ -388,11 +394,13 @@ fn parse_sse_stream(
                 for line in block.lines() {
                     if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
-                            break;
+                            return;
                         }
                         match serde_json::from_str::<StreamEvent>(data) {
                             Ok(event) => yield event,
-                            Err(_e) => {}
+                            Err(err) => {
+                                logging::warn(format!("Failed to parse SSE event: {err}"));
+                            }
                         }
                     }
                 }

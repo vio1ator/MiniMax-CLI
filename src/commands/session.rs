@@ -24,10 +24,7 @@ pub fn save(app: &mut App, path: Option<&str>) -> CommandResult {
         &app.model,
         &app.workspace,
         u64::from(app.total_tokens),
-        app.system_prompt.as_ref().and_then(|sp| match sp {
-            crate::models::SystemPrompt::Text(t) => Some(t.as_str()),
-            crate::models::SystemPrompt::Blocks(_) => None,
-        }),
+        app.system_prompt.as_ref(),
     );
 
     let sessions_dir = save_path
@@ -95,12 +92,20 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
     }
     app.scroll_to_bottom();
 
-    CommandResult::message(format!(
-        "Session loaded from {} (ID: {}, {} messages)",
-        load_path.display(),
-        &session.metadata.id[..8],
-        session.metadata.message_count
-    ))
+    CommandResult::with_message_and_action(
+        format!(
+            "Session loaded from {} (ID: {}, {} messages)",
+            load_path.display(),
+            &session.metadata.id[..8],
+            session.metadata.message_count
+        ),
+        crate::tui::app::AppAction::SyncSession {
+            messages: app.api_messages.clone(),
+            system_prompt: app.system_prompt.clone(),
+            model: app.model.clone(),
+            workspace: app.workspace.clone(),
+        },
+    )
 }
 
 /// Toggle auto-compaction
