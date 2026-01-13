@@ -8,14 +8,14 @@
 # API Keys
 # ─────────────────────────────────────────────────────────────────────────────────
 api_key = "YOUR_MINIMAX_API_KEY"
-anthropic_api_key = "YOUR_ANTHROPIC_COMPAT_API_KEY"
+# anthropic_api_key = "YOUR_ANTHROPIC_COMPAT_API_KEY"  # Not yet supported
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Base URLs
 # ─────────────────────────────────────────────────────────────────────────────────
 base_url = "https://api.minimax.io"
 # base_url = "https://api.minimaxi.com"         # China users
-anthropic_base_url = "https://api.minimax.io/anthropic"
+# anthropic_base_url = "https://api.minimax.io/anthropic"  # Computed from base_url
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Default Models
@@ -52,24 +52,24 @@ max_delay = 60.0
 exponential_base = 2.0
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# Context Compaction (Auto-summarization for long conversations)
+# Context Compaction (PLANNED - not yet implemented)
 # ─────────────────────────────────────────────────────────────────────────────────
-[compaction]
-enabled = false                  # Enable auto-compaction
-token_threshold = 50000          # Trigger compaction above this token estimate
-message_threshold = 50           # Or above this message count
-model = "MiniMax-M2.1"           # Model to use for summarization
-cache_summary = true             # Cache the summary block
+# [compaction]
+# enabled = false                  # Enable auto-compaction
+# token_threshold = 50000          # Trigger compaction above this token estimate
+# message_threshold = 50           # Or above this message count
+# model = "MiniMax-M2.1"           # Model to use for summarization
+# cache_summary = true             # Cache the summary block
 
 # ─────────────────────────────────────────────────────────────────────────────────
-# RLM Sandbox Configuration
+# RLM Sandbox Configuration (PLANNED - not yet implemented)
 # ─────────────────────────────────────────────────────────────────────────────────
-[rlm]
-max_context_chars = 10000000     # Max characters for context (10MB)
-max_search_results = 100         # Max search results
-default_chunk_size = 2000        # Default chunk size
-default_overlap = 200            # Default chunk overlap
-session_dir = "~/.minimax/rlm"   # Directory for RLM sessions
+# [rlm]
+# max_context_chars = 10000000     # Max characters for context (10MB)
+# max_search_results = 100         # Max search results
+# default_chunk_size = 2000        # Default chunk size
+# default_overlap = 200            # Default chunk overlap
+# session_dir = "~/.minimax/rlm"   # Directory for RLM sessions
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profile Example (for multiple environments)
