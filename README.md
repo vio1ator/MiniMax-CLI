@@ -1,108 +1,194 @@
 # MiniMax CLI
 
 ![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
+![crates.io](https://img.shields.io/crates/v/minimax-cli)
+![npm](https://img.shields.io/npm/v/@hmbown/minimax-cli)
+![PyPI](https://img.shields.io/pypi/v/MiniMax-CLI)
 
-Terminal client for [MiniMax M2.1](https://platform.minimax.io). Chat, agent mode, and native media generation.
+Unofficial terminal UI (TUI) + CLI for the [MiniMax platform](https://platform.minimax.io): chat with **MiniMax-M2.1**, run an approval-gated tool-using agent, and generate media (images, video, music, TTS).
 
-**Note:** Currently tested with the standard MiniMax API only. Coding Plan MCP is supported, but not fully vetted.
+Highlights:
 
-## What's Unique
+- Streaming chat via MiniMax’s Anthropic-compatible API format
+- Tool-using agent with approvals + workspace sandbox
+- Built-in MiniMax media tools (image/video/music/TTS/voice) that save outputs to your workspace
+- Skills (`SKILL.md`) and external tools via MCP
+- Project-aware prompts via `AGENTS.md` (and `.claude/instructions.md` / `CLAUDE.md`)
 
-MiniMax M2.1 has built-in media generation APIs. This CLI exposes them directly:
+Not affiliated with MiniMax Inc.
 
-```bash
-# Generate images
-/minimax image "a cat wearing a space helmet"
+## Quickstart
 
-# Generate music
-/minimax music "lo-fi beats, rainy day, piano"
-
-# Text-to-speech with voice cloning
-/minimax tts "Hello world" --voice custom_voice
-
-# Generate video clips
-/minimax video "drone shot of mountains at sunset"
-```
-
-These aren't wrappers around other services - they're native MiniMax capabilities included with your API key.
+1. Get an API key from https://platform.minimax.io
+2. Run `minimax` (or `minimax-cli` if you installed via pip) and paste your key when prompted (saved to `~/.minimax/config.toml`), or set `MINIMAX_API_KEY`
+3. Press `F1` or run `/help` for the in-app command list
 
 ## Install
 
+### Prebuilt (recommended)
+
+NPM and Python packages are thin wrappers that download the platform-appropriate Rust binary from GitHub Releases.
+
 ```bash
-# npm / bun
+# npm / bun (installs `minimax`)
 npm install -g @hmbown/minimax-cli
 bun install -g @hmbown/minimax-cli
 
-# pip / uv
+# pip / uv (installs `minimax-cli`)
 pip install MiniMax-CLI
 uv pip install MiniMax-CLI
+```
 
-# cargo (builds from source)
+### From source (Rust)
+
+```bash
 cargo install minimax-cli
 ```
 
-Or download prebuilt binaries from [Releases](https://github.com/Hmbown/MiniMax-CLI/releases).
+### Direct download
+
+Download a prebuilt binary from https://github.com/Hmbown/MiniMax-CLI/releases and put it on your `PATH` as `minimax`.
 
 ## Usage
 
 ```bash
-minimax              # Interactive TUI
-minimax -p "prompt"  # One-shot mode
-minimax --yolo       # Agent mode (shell + file tools)
+minimax                     # Interactive TUI
+minimax -p "Write a haiku"   # One-shot prompt (prints and exits)
+
+minimax doctor               # Diagnose config + API key
+minimax sessions             # List auto-saved sessions (~/.minimax/sessions)
+minimax --resume <id>        # Resume by ID/prefix (or "latest")
+minimax --continue           # Resume most recent session
+
+minimax --workspace /path/to/project
+minimax --yolo               # Start in Agent mode + auto-approve tools (dangerous)
+
+minimax init                 # Generate a starter AGENTS.md for the current directory
+```
+
+If you installed via pip, run the same commands as `minimax-cli ...` (it downloads the `minimax` binary and then execs it).
+
+Shell completions:
+
+```bash
+minimax completions zsh > _minimax
+minimax completions bash > minimax.bash
+minimax completions fish > minimax.fish
 ```
 
 ## Configuration
 
-Create `~/.minimax/config.toml`:
+The TUI can save your API key during onboarding. You can also create `~/.minimax/config.toml` manually.
+
+Minimal config:
 
 ```toml
-api_key = "your-api-key"
+api_key = "YOUR_MINIMAX_API_KEY"
+default_text_model = "MiniMax-M2.1" # optional
+allow_shell = false                # optional
+max_subagents = 3                  # optional (1-5)
 ```
 
-Or set `MINIMAX_API_KEY` in your environment.
+Useful environment variables:
 
-Get an API key at [platform.minimax.io](https://platform.minimax.io).
+- `MINIMAX_API_KEY` (overrides config)
+- `MINIMAX_BASE_URL` (default: `https://api.minimax.io`; China users may use `https://api.minimaxi.com`)
+- `MINIMAX_PROFILE` (selects `[profiles.<name>]` from config)
+- `MINIMAX_CONFIG_PATH` (override config file path)
+- `MINIMAX_ALLOW_SHELL`, `MINIMAX_SKILLS_DIR`, `MINIMAX_MCP_CONFIG`, `MINIMAX_NOTES_PATH`
 
-For Coding Plan MCP (web search + image understanding), see
-[`docs/coding-plan-integration.md`](docs/coding-plan-integration.md).
+See `config.example.toml` for a fuller config reference.
 
-## Features
+## Project Instructions (AGENTS.md)
 
-- **Chat**: Streaming responses, 204K context, interleaved thinking
-- **Agent mode**: File operations, shell execution, MCP tool support
-- **Web search**: Built-in DuckDuckGo search tool, plus optional Coding Plan MCP
-- **Media generation**: Images, audio, video, music - all native to MiniMax
-- **Skills**: Reusable workflows for complex multi-step tasks
+If your workspace has an `AGENTS.md`, the TUI loads it into the system prompt automatically (and will also look in parent directories up to the git root). Use it to tell the agent how to work in your repo: commands, conventions, and guardrails.
 
-## Commands
+Create a starter file:
 
-| Command | Description |
-|---------|-------------|
-| `/help` | Show help |
-| `/mode` | Switch modes (normal/edit/agent/plan) |
-| `/model` | Switch models (M2.1 / M2.1-lightning) |
-| `/yolo` | Enable agent mode |
-| `/skills` | List available skills |
-| `/minimax` | Media generation commands |
-| `/save` `/load` | Session management |
-| `/tokens` | Show usage |
+- CLI: `minimax init`
+- In-app: `/init`
+
+## What You Can Do In The TUI
+
+### Modes
+
+Switch modes with `Tab` or `/mode`:
+
+- **Normal**: chat
+- **Edit**: file-focused assistance
+- **Agent**: multi-step tool use (with approvals)
+- **Plan**: design-first prompting
+- **RLM**: load/search/chunk large files in an in-app sandbox
+
+### Slash Commands (high-signal)
+
+The built-in help (`F1` or `/help`) is always up to date. Common commands:
+
+| Command | What it does |
+|---|---|
+| `/mode [normal|edit|agent|plan|rlm]` | Switch modes |
+| `/model [name]` | View/set model name |
+| `/skills` | List skills |
+| `/skill <name>` | Activate a skill for your next message |
+| `/save [path]` | Save current chat to JSON |
+| `/load <path>` | Load chat JSON (or load a file into RLM context in RLM mode) |
+| `/export [path]` | Export transcript to Markdown |
+| `/yolo` | Switch to Agent mode + enable shell tool (still prompts for approval) |
+| `/trust` | Allow file access outside workspace |
+| `/tokens` | Token totals + metadata |
+| `/context` | Context usage estimate |
+| `/cost` | Pricing reference for paid tools |
+| `/subagents` | Show sub-agent status |
+
+## Tools, Safety, And The Workspace Boundary
+
+MiniMax CLI exposes a tool set to the model (file read/write, patching, web search, sub-agents, and MiniMax media APIs). By default, the TUI asks before running tools with side effects:
+
+- **File writes**: `write_file`, `edit_file`, `apply_patch`
+- **Shell**: `exec_shell` (disabled unless `allow_shell=true` or `/yolo` or `--yolo`)
+- **Paid/Media**: `generate_image`, `generate_video`, `generate_music`, `tts`, voice tools, file upload/download
+
+The built-in `web_search` tool is backed by DuckDuckGo HTML results and is auto-approved.
+
+File tools are restricted to the `--workspace` directory unless you enable `/trust`.
+
+## Media Generation (MiniMax APIs)
+
+MiniMax CLI includes first-class tools for MiniMax’s media endpoints. In practice: ask for an image/video/music/TTS and the assistant can generate it and save outputs into your workspace.
+
+Built-in MiniMax tool names (for power users): `generate_image`, `generate_video`, `query_video`, `generate_music`, `tts`, `analyze_image`, `voice_clone`, `voice_list`, `voice_delete`, `voice_design`.
 
 ## Skills
 
-Skills are multi-step workflows that combine chat + media tools. Examples:
+Skills are reusable workflows stored as `SKILL.md` files inside a directory.
 
-- `video-studio` - Script, narrate, and render short videos
-- `voiceover-studio` - Design voices and produce narration
-- `audiobook-studio` - Convert text to multi-chapter audiobooks
-- `music-video-generator` - Sync generated music with video
+- If your workspace contains `./skills/`, the TUI uses that.
+- Otherwise, it falls back to `~/.minimax/skills/`.
 
-Run with `/skills <name>`. Create your own in `~/.minimax/skills/`.
+Use `/skills` to list and `/skill <name>` to activate.
+
+This repo includes example skills like `video-studio`, `voiceover-studio`, `music-video-generator`, and `audiobook-studio` under `skills/`.
+
+## MCP (External Tool Servers)
+
+MiniMax CLI can load additional tools via MCP (Model Context Protocol). Configure `~/.minimax/mcp.json` (supports `servers` and `mcpServers` keys), then restart the TUI.
+
+For Coding Plan MCP setup, see `docs/coding-plan-integration.md`.
 
 ## Documentation
 
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [coding-plan-integration.md](docs/coding-plan-integration.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- `docs/ARCHITECTURE.md`
+- `docs/coding-plan-integration.md`
+- `CONTRIBUTING.md`
+
+## Development
+
+```bash
+cargo build
+cargo test
+cargo fmt
+cargo clippy
+```
 
 ## License
 
@@ -110,4 +196,4 @@ MIT
 
 ---
 
-*Unofficial project. MiniMax is a trademark of MiniMax Inc.*
+MiniMax is a trademark of MiniMax Inc. This is an unofficial project.

@@ -252,3 +252,62 @@ fn extract_image_payloads(response: &Value) -> Vec<ImagePayload> {
 
     payloads
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use base64::Engine;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn client_for_base_url(base_url: String) -> MiniMaxClient {
+        let config = Config {
+            api_key: Some("test".to_string()),
+            base_url: Some(base_url),
+            ..Config::default()
+        };
+        MiniMaxClient::new(&config).expect("create client")
+    }
+
+    #[tokio::test]
+    async fn generate_saves_image_to_output_dir() {
+        let server = MockServer::start().await;
+        let png_bytes = b"PNGDATA".to_vec();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/image_generation"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "base_resp": { "status_code": 0, "status_msg": "success" },
+                "data": [{ "b64_json": b64 }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = client_for_base_url(server.uri());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let options = ImageGenerateOptions {
+            model: "image-01".to_string(),
+            prompt: "test".to_string(),
+            negative_prompt: None,
+            aspect_ratio: None,
+            width: None,
+            height: None,
+            style: None,
+            response_format: None,
+            seed: None,
+            n: None,
+            prompt_optimizer: None,
+            subject_reference: Vec::new(),
+            output_dir: dir.path().to_path_buf(),
+        };
+
+        let paths = generate(&client, options).await.expect("generate image");
+        assert_eq!(paths.len(), 1);
+        let path = &paths[0];
+        assert!(path.starts_with(dir.path()));
+        assert!(path.exists());
+        assert_eq!(std::fs::read(path).expect("read image"), png_bytes);
+    }
+}

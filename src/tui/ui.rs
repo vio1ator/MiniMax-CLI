@@ -948,6 +948,7 @@ fn render_chat(f: &mut Frame, area: Rect, app: &mut App) {
     app.last_transcript_top = top;
     app.last_transcript_visible = visible_lines;
     app.last_transcript_total = total_lines;
+    app.last_transcript_padding_top = 0;
 
     let end = (top + visible_lines).min(total_lines);
     let mut visible = if total_lines == 0 {
@@ -958,11 +959,119 @@ fn render_chat(f: &mut Frame, area: Rect, app: &mut App) {
 
     apply_selection(&mut visible, top, app);
 
+    // Bottom-align the transcript when the user is "following" the chat and the
+    // content doesn't fill the available viewport height.
+    if matches!(app.transcript_scroll, TranscriptScroll::ToBottom) {
+        app.last_transcript_padding_top = visible_lines.saturating_sub(visible.len());
+        pad_lines_to_bottom(&mut visible, visible_lines);
+    }
+
     let paragraph = Paragraph::new(visible);
     f.render_widget(paragraph, content_area);
 
     if let Some(scrollbar_area) = scrollbar_area {
         render_scrollbar(f, scrollbar_area, top, visible_lines, total_lines);
+    }
+}
+
+fn pad_lines_to_bottom(lines: &mut Vec<Line<'static>>, height: usize) {
+    if lines.len() >= height {
+        return;
+    }
+    let padding = height.saturating_sub(lines.len());
+    if padding == 0 {
+        return;
+    }
+
+    let mut padded = Vec::with_capacity(height);
+    padded.extend(std::iter::repeat(Line::from("")).take(padding));
+    padded.extend(lines.drain(..));
+    *lines = padded;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pad_lines_to_bottom_noop_when_already_filled() {
+        let mut lines = vec![Line::from("one"), Line::from("two")];
+        pad_lines_to_bottom(&mut lines, 2);
+        assert_eq!(lines, vec![Line::from("one"), Line::from("two")]);
+    }
+
+    #[test]
+    fn pad_lines_to_bottom_prepends_empty_lines() {
+        let mut lines = vec![Line::from("one"), Line::from("two")];
+        pad_lines_to_bottom(&mut lines, 5);
+
+        assert_eq!(lines.len(), 5);
+        assert_eq!(lines[0], Line::from(""));
+        assert_eq!(lines[1], Line::from(""));
+        assert_eq!(lines[2], Line::from(""));
+        assert_eq!(lines[3], Line::from("one"));
+        assert_eq!(lines[4], Line::from("two"));
+    }
+
+    #[test]
+    fn pad_lines_to_bottom_noop_when_height_is_zero() {
+        let mut lines = vec![Line::from("one")];
+        pad_lines_to_bottom(&mut lines, 0);
+        assert_eq!(lines, vec![Line::from("one")]);
+    }
+
+    #[test]
+    fn selection_point_from_position_ignores_top_padding() {
+        let area = Rect {
+            x: 10,
+            y: 20,
+            width: 30,
+            height: 5,
+        };
+
+        // Content is bottom-aligned: 2 transcript lines in a 5-row viewport.
+        let padding_top = 3;
+        let transcript_top = 0;
+        let transcript_total = 2;
+
+        // Click in padding area -> no selection
+        assert!(
+            selection_point_from_position(
+                area,
+                area.x + 1,
+                area.y,
+                transcript_top,
+                transcript_total,
+                padding_top,
+            )
+            .is_none()
+        );
+
+        // First transcript line is at row `padding_top`
+        let p0 = selection_point_from_position(
+            area,
+            area.x + 2,
+            area.y + u16::try_from(padding_top).unwrap(),
+            transcript_top,
+            transcript_total,
+            padding_top,
+        )
+        .expect("point");
+        assert_eq!(p0.line_index, 0);
+        assert_eq!(p0.column, 2);
+
+        // Second transcript line is one row below
+        let p1 = selection_point_from_position(
+            area,
+            area.x,
+            area.y + u16::try_from(padding_top + 1).unwrap(),
+            transcript_top,
+            transcript_total,
+            padding_top,
+        )
+        .expect("point");
+        assert_eq!(p1.line_index, 1);
+        assert_eq!(p1.column, 0);
     }
 }
 
@@ -1516,24 +1625,46 @@ fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
 }
 
 fn selection_point_from_mouse(app: &App, mouse: MouseEvent) -> Option<TranscriptSelectionPoint> {
-    let area = app.last_transcript_area?;
-    if mouse.column < area.x
-        || mouse.column >= area.x + area.width
-        || mouse.row < area.y
-        || mouse.row >= area.y + area.height
+    selection_point_from_position(
+        app.last_transcript_area?,
+        mouse.column,
+        mouse.row,
+        app.last_transcript_top,
+        app.last_transcript_total,
+        app.last_transcript_padding_top,
+    )
+}
+
+fn selection_point_from_position(
+    area: Rect,
+    column: u16,
+    row: u16,
+    transcript_top: usize,
+    transcript_total: usize,
+    padding_top: usize,
+) -> Option<TranscriptSelectionPoint> {
+    if column < area.x
+        || column >= area.x + area.width
+        || row < area.y
+        || row >= area.y + area.height
     {
         return None;
     }
 
-    let row = mouse.row.saturating_sub(area.y) as usize;
-    let col = mouse.column.saturating_sub(area.x) as usize;
-    if app.last_transcript_total == 0 {
+    if transcript_total == 0 {
         return None;
     }
-    let line_index = app
-        .last_transcript_top
+
+    let row = row.saturating_sub(area.y) as usize;
+    if row < padding_top {
+        return None;
+    }
+    let row = row.saturating_sub(padding_top);
+
+    let col = column.saturating_sub(area.x) as usize;
+    let line_index = transcript_top
         .saturating_add(row)
-        .min(app.last_transcript_total.saturating_sub(1));
+        .min(transcript_total.saturating_sub(1));
 
     Some(TranscriptSelectionPoint {
         line_index,

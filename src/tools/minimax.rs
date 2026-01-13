@@ -100,8 +100,7 @@ impl ToolSpec for TtsTool {
                 },
                 "output_format": {
                     "type": "string",
-                    "description": "Output format (e.g., wav, mp3)",
-                    "default": "wav"
+                    "description": "Output format value to request from MiniMax (see MiniMax docs)"
                 },
                 "stream": {
                     "type": "boolean",
@@ -152,8 +151,8 @@ impl ToolSpec for TtsTool {
             .to_string();
         let voice_id = optional_str(&input, "voice_id").map(std::string::ToString::to_string);
         let output_format = optional_str(&input, "output_format")
-            .map(std::string::ToString::to_string)
-            .or_else(|| Some("wav".to_string()));
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let stream = input
             .get("stream")
             .and_then(serde_json::Value::as_bool)
@@ -188,7 +187,10 @@ impl ToolSpec for TtsTool {
         };
 
         match audio::t2a(&client, options).await {
-            Ok(()) => Ok(ToolResult::success("TTS audio generated successfully")),
+            Ok(path) => Ok(ToolResult::success(format!(
+                "TTS audio saved to {}",
+                path.display()
+            ))),
             Err(e) => Ok(ToolResult::error(format!(
                 "Failed to generate TTS audio: {e}"
             ))),
@@ -629,7 +631,7 @@ impl ToolSpec for GenerateVideoTool {
     }
 
     fn description(&self) -> &'static str {
-        "Generate videos from text prompts using MiniMax. Returns the task ID for async processing."
+        "Generate a video from a text prompt using MiniMax. Saves the downloaded video file to the workspace (set wait=false for async)."
     }
 
     fn input_schema(&self) -> Value {
@@ -687,7 +689,7 @@ impl ToolSpec for GenerateVideoTool {
                 "wait": {
                     "type": "boolean",
                     "description": "Wait for the video and download when ready",
-                    "default": false
+                    "default": true
                 }
             },
             "required": ["prompt"]
@@ -729,7 +731,7 @@ impl ToolSpec for GenerateVideoTool {
         let wait = input
             .get("wait")
             .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
+            .unwrap_or(true);
 
         let client = create_minimax_client()?;
         let output_dir = context.workspace.clone();
@@ -751,9 +753,32 @@ impl ToolSpec for GenerateVideoTool {
         };
 
         match video::generate(&client, options).await {
-            Ok(()) => Ok(ToolResult::success(
-                "Video generation task submitted successfully",
-            )),
+            Ok(result) => {
+                if let Some(path) = result.video_path {
+                    Ok(ToolResult::success(format!(
+                        "Video saved to {}",
+                        path.display()
+                    )))
+                } else if let Some(task_id) = result.task_id {
+                    if let Some(path) = result.response_path {
+                        Ok(ToolResult::success(format!(
+                            "Video task submitted: {task_id}. Response saved to {}",
+                            path.display()
+                        )))
+                    } else {
+                        Ok(ToolResult::success(format!(
+                            "Video task submitted: {task_id}"
+                        )))
+                    }
+                } else if let Some(path) = result.response_path {
+                    Ok(ToolResult::success(format!(
+                        "Video request submitted. Response saved to {}",
+                        path.display()
+                    )))
+                } else {
+                    Ok(ToolResult::success("Video request submitted"))
+                }
+            }
             Err(e) => Ok(ToolResult::error(format!("Failed to generate video: {e}"))),
         }
     }
@@ -955,8 +980,7 @@ impl ToolSpec for GenerateMusicTool {
                 },
                 "output_format": {
                     "type": "string",
-                    "description": "Output format (e.g., wav, mp3)",
-                    "default": "wav"
+                    "description": "Output format value to request from MiniMax (see MiniMax docs)"
                 },
                 "stream": {
                     "type": "boolean",
@@ -983,8 +1007,8 @@ impl ToolSpec for GenerateMusicTool {
             .to_string();
         let lyrics = optional_str(&input, "lyrics").map(std::string::ToString::to_string);
         let output_format = optional_str(&input, "output_format")
-            .map(std::string::ToString::to_string)
-            .or_else(|| Some("wav".to_string()));
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         let stream = input
             .get("stream")
             .and_then(serde_json::Value::as_bool)
@@ -1005,7 +1029,10 @@ impl ToolSpec for GenerateMusicTool {
         };
 
         match music::generate(&client, options).await {
-            Ok(()) => Ok(ToolResult::success("Music generated successfully")),
+            Ok(path) => Ok(ToolResult::success(format!(
+                "Music saved to {}",
+                path.display()
+            ))),
             Err(e) => Ok(ToolResult::error(format!("Failed to generate music: {e}"))),
         }
     }

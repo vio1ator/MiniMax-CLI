@@ -83,7 +83,7 @@ pub struct VoiceDesignOptions {
 
 // === API Calls ===
 
-pub async fn t2a(client: &MiniMaxClient, options: T2aOptions) -> Result<()> {
+pub async fn t2a(client: &MiniMaxClient, options: T2aOptions) -> Result<PathBuf> {
     let mut body = json!({
         "model": options.model,
         "text": options.text,
@@ -119,28 +119,31 @@ pub async fn t2a(client: &MiniMaxClient, options: T2aOptions) -> Result<()> {
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
-            .unwrap_or("");
+            .unwrap_or("")
+            .to_string();
 
-        if content_type.contains("application/json") {
-            let value: Value = response.json().await?;
-            handle_audio_response(client, &value, &options.output_dir).await?;
-        } else {
-            let bytes = response.bytes().await?;
-            let extension = options
-                .output_format
-                .clone()
-                .unwrap_or_else(|| "wav".to_string());
-            let filename = timestamped_filename("speech", &extension);
-            let path = output_path(&options.output_dir, &filename);
-            write_bytes(&path, &bytes)?;
-            println!("{} {}", "Saved".green().bold(), path.display());
+        let bytes = response.bytes().await?;
+
+        if let Some(value) = parse_json_bytes(&content_type, &bytes) {
+            return handle_audio_response(client, &value, &options.output_dir).await;
         }
+
+        let extension = options
+            .output_format
+            .or_else(|| {
+                extension_from_content_type(&content_type).map(std::string::ToString::to_string)
+            })
+            .or_else(|| infer_audio_extension(&bytes).map(std::string::ToString::to_string))
+            .unwrap_or_else(|| "bin".to_string());
+        let filename = timestamped_filename("speech", &extension);
+        let path = output_path(&options.output_dir, &filename);
+        write_bytes(&path, &bytes)?;
+        println!("{} {}", "Saved".green().bold(), path.display());
+        Ok(path)
     } else {
         let response: Value = client.post_json("/v1/t2a_v2", &body).await?;
-        handle_audio_response(client, &response, &options.output_dir).await?;
+        handle_audio_response(client, &response, &options.output_dir).await
     }
-
-    Ok(())
 }
 
 pub async fn t2a_async_create(
@@ -288,51 +291,54 @@ async fn handle_audio_response(
     client: &MiniMaxClient,
     response: &Value,
     output_dir: &Path,
-) -> Result<()> {
+) -> Result<PathBuf> {
+    ensure_success(response)?;
+
     if let Some(url) = extract_audio_url(response) {
         let bytes = client.get_bytes(&url).await?;
-        let extension = extension_from_url(&url).unwrap_or_else(|| "wav".to_string());
-        let filename = timestamped_filename("audio", &extension);
+        let extension = extension_from_url(&url)
+            .or_else(|| infer_audio_extension(&bytes).map(std::string::ToString::to_string))
+            .unwrap_or_else(|| "bin".to_string());
+        let filename = timestamped_filename("speech", &extension);
         let path = output_path(output_dir, &filename);
         write_bytes(&path, &bytes)?;
         println!("{} {}", "Saved".green().bold(), path.display());
-        return Ok(());
+        return Ok(path);
     }
 
     if let Some(file_id) = extract_file_id(response) {
         let url_opt = retrieve_file(client, &file_id, Some("audio")).await?;
         if let Some(url) = url_opt {
             let bytes = client.get_bytes(&url).await?;
-            let extension = extension_from_url(&url).unwrap_or_else(|| "wav".to_string());
-            let filename = timestamped_filename("audio", &extension);
+            let extension = extension_from_url(&url)
+                .or_else(|| infer_audio_extension(&bytes).map(std::string::ToString::to_string))
+                .unwrap_or_else(|| "bin".to_string());
+            let filename = timestamped_filename("speech", &extension);
             let path = output_path(output_dir, &filename);
             write_bytes(&path, &bytes)?;
             println!("{} {}", "Saved".green().bold(), path.display());
-            return Ok(());
+            return Ok(path);
         }
     }
 
-    if let Some(b64) = response
-        .get("audio")
-        .or_else(|| response.get("audio_base64"))
-        .and_then(|value| value.as_str())
-    {
+    if let Some(b64) = extract_audio_base64(response) {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(b64.trim())
             .context("Failed to decode audio payload: invalid base64 data.")?;
-        let filename = timestamped_filename("audio", "wav");
+        let extension = infer_audio_extension(&bytes)
+            .map(std::string::ToString::to_string)
+            .unwrap_or_else(|| "bin".to_string());
+        let filename = timestamped_filename("speech", &extension);
         let path = output_path(output_dir, &filename);
         write_bytes(&path, &bytes)?;
         println!("{} {}", "Saved".green().bold(), path.display());
-        return Ok(());
+        return Ok(path);
     }
 
-    println!(
-        "{}",
-        "Failed to generate audio: no audio payload found in response.".yellow()
-    );
-    println!("{}", pretty_json(response));
-    Ok(())
+    anyhow::bail!(
+        "Failed to generate audio: no audio payload found in response. Response: {}",
+        pretty_json(response)
+    )
 }
 
 fn extract_audio_url(response: &Value) -> Option<String> {
@@ -368,6 +374,121 @@ fn extract_file_id(response: &Value) -> Option<String> {
         })
 }
 
+fn extract_audio_base64(response: &Value) -> Option<String> {
+    if let Some(b64) = response
+        .get("audio")
+        .or_else(|| response.get("audio_base64"))
+        .and_then(|value| value.as_str())
+    {
+        return Some(b64.to_string());
+    }
+
+    if let Some(data) = response.get("data") {
+        if let Some(b64) = data
+            .get("audio")
+            .or_else(|| data.get("audio_base64"))
+            .and_then(|value| value.as_str())
+        {
+            return Some(b64.to_string());
+        }
+        if let Some(items) = data.as_array() {
+            for item in items {
+                if let Some(b64) = item
+                    .get("audio")
+                    .or_else(|| item.get("audio_base64"))
+                    .and_then(|value| value.as_str())
+                {
+                    return Some(b64.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn ensure_success(response: &Value) -> Result<()> {
+    let status_code = response
+        .get("base_resp")
+        .and_then(|base| base.get("status_code"))
+        .and_then(serde_json::Value::as_i64);
+    let status_msg = response
+        .get("base_resp")
+        .and_then(|base| base.get("status_msg"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown");
+
+    if let Some(status_code) = status_code
+        && status_code != 0
+    {
+        anyhow::bail!(
+            "MiniMax t2a_v2 error: {status_code} {status_msg}. Response: {}",
+            pretty_json(response)
+        );
+    }
+
+    Ok(())
+}
+
+fn parse_json_bytes(content_type: &str, bytes: &[u8]) -> Option<Value> {
+    let looks_json = content_type
+        .to_ascii_lowercase()
+        .contains("application/json")
+        || bytes
+            .iter()
+            .copied()
+            .skip_while(u8::is_ascii_whitespace)
+            .next()
+            .is_some_and(|b| b == b'{' || b == b'[');
+    if !looks_json {
+        return None;
+    }
+    serde_json::from_slice(bytes).ok()
+}
+
+fn infer_audio_extension(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        return Some("wav");
+    }
+    if bytes.starts_with(b"ID3")
+        || bytes.starts_with(&[0xFF, 0xFB])
+        || bytes.starts_with(&[0xFF, 0xF3])
+        || bytes.starts_with(&[0xFF, 0xF2])
+    {
+        return Some("mp3");
+    }
+    if bytes.starts_with(b"fLaC") {
+        return Some("flac");
+    }
+    if bytes.starts_with(b"OggS") {
+        return Some("ogg");
+    }
+    if bytes.starts_with(b"MThd") {
+        return Some("mid");
+    }
+    None
+}
+
+fn extension_from_content_type(content_type: &str) -> Option<&'static str> {
+    let normalized = content_type.to_ascii_lowercase();
+    if normalized.contains("audio/mpeg") {
+        return Some("mp3");
+    }
+    if normalized.contains("audio/wav") || normalized.contains("audio/wave") {
+        return Some("wav");
+    }
+    if normalized.contains("audio/mp4") || normalized.contains("audio/x-m4a") {
+        return Some("m4a");
+    }
+    if normalized.contains("audio/flac") {
+        return Some("flac");
+    }
+    if normalized.contains("audio/ogg") {
+        return Some("ogg");
+    }
+    None
+}
+
 fn merge_json_field(target: &mut Value, field: &str, raw_json: Option<String>) -> Result<()> {
     if let Some(raw_json) = raw_json {
         let parsed: Value = serde_json::from_str(&raw_json)
@@ -391,5 +512,62 @@ fn merge_json(existing: &mut Value, incoming: Value) {
         }
     } else {
         *existing = incoming;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use base64::Engine;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn client_for_base_url(base_url: String) -> MiniMaxClient {
+        let config = Config {
+            api_key: Some("test".to_string()),
+            base_url: Some(base_url),
+            ..Config::default()
+        };
+        MiniMaxClient::new(&config).expect("create client")
+    }
+
+    #[tokio::test]
+    async fn t2a_saves_audio_to_output_dir() {
+        let server = MockServer::start().await;
+        let wav_bytes = b"RIFF\x00\x00\x00\x00WAVE".to_vec();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&wav_bytes);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/t2a_v2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "base_resp": { "status_code": 0, "status_msg": "success" },
+                "audio_base64": b64
+            })))
+            .mount(&server)
+            .await;
+
+        let client = client_for_base_url(server.uri());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let options = T2aOptions {
+            model: "speech-02-hd".to_string(),
+            text: "hello".to_string(),
+            stream: false,
+            output_format: None,
+            voice_id: None,
+            voice_setting_json: None,
+            audio_setting_json: None,
+            pronunciation_dict_json: None,
+            timber_weights_json: None,
+            language_boost_json: None,
+            voice_modify_json: None,
+            subtitle_enable: None,
+            output_dir: dir.path().to_path_buf(),
+        };
+
+        let path = t2a(&client, options).await.expect("t2a");
+        assert!(path.starts_with(dir.path()));
+        assert!(path.exists());
+        assert_eq!(std::fs::read(&path).expect("read audio"), wav_bytes);
     }
 }
