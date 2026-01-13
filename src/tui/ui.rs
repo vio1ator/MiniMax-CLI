@@ -1808,18 +1808,6 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("Chat API ", Style::default().fg(Color::Green).bold()),
-                Span::styled("(Normal Mode) - ", Style::default().fg(Color::White)),
-                Span::styled("Ready", Style::default().fg(Color::Green)),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("Coding API ", Style::default().fg(Color::Yellow).bold()),
-                Span::styled("(Plan/Edit Mode) - ", Style::default().fg(Color::White)),
-                Span::styled("Coming Soon", Style::default().fg(Color::Yellow).italic()),
-            ]));
-            lines.push(Line::from(""));
-            lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "To get started, you'll need a MiniMax API key.",
                 Style::default().fg(Color::White),

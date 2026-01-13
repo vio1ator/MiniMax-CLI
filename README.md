@@ -1,7 +1,5 @@
 # MiniMax CLI
 
-![MiniMax CLI](assets/hero.png)
-
 ![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
 
 Terminal client for [MiniMax M2.1](https://platform.minimax.io). Chat, agent mode, and native media generation.
