@@ -1,6 +1,6 @@
 # MiniMax CLI
 
-![MiniMax CLI hero](assets/hero.png)
+![MiniMax CLI hero](assets/hero.jpg)
 
 **Terminal-native agent for MiniMax M2.1** — tools, skills, media generation, and lightning-fast workflows.
 
