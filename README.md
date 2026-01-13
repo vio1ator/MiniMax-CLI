@@ -4,7 +4,29 @@
 
 ![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
 
-Terminal client for [MiniMax M2.1](https://platform.minimax.io). Supports chat, agent mode, media generation, and custom skills.
+Terminal client for [MiniMax M2.1](https://platform.minimax.io). Chat, agent mode, and native media generation.
+
+**Note:** Currently tested with the standard MiniMax API only. The MiniMax coding-focused plans have not been tested yet.
+
+## What's Unique
+
+MiniMax M2.1 has built-in media generation APIs. This CLI exposes them directly:
+
+```bash
+# Generate images
+/minimax image "a cat wearing a space helmet"
+
+# Generate music
+/minimax music "lo-fi beats, rainy day, piano"
+
+# Text-to-speech with voice cloning
+/minimax tts "Hello world" --voice custom_voice
+
+# Generate video clips
+/minimax video "drone shot of mountains at sunset"
+```
+
+These aren't wrappers around other services - they're native MiniMax capabilities included with your API key.
 
 ## Install
 
@@ -44,10 +66,10 @@ Get an API key at [platform.minimax.io](https://platform.minimax.io).
 
 ## Features
 
-- **Chat**: Streaming responses with 204K context
-- **Agent mode**: File operations, shell execution, MCP tools
-- **Media tools**: Image, audio, video, music generation
-- **Skills**: Reusable workflows (see `skills/` directory)
+- **Chat**: Streaming responses, 204K context, interleaved thinking
+- **Agent mode**: File operations, shell execution, MCP tool support
+- **Media generation**: Images, audio, video, music - all native to MiniMax
+- **Skills**: Reusable workflows for complex multi-step tasks
 
 ## Commands
 
@@ -55,19 +77,23 @@ Get an API key at [platform.minimax.io](https://platform.minimax.io).
 |---------|-------------|
 | `/help` | Show help |
 | `/mode` | Switch modes (normal/edit/agent/plan) |
-| `/model` | Switch models |
+| `/model` | Switch models (M2.1 / M2.1-lightning) |
 | `/yolo` | Enable agent mode |
 | `/skills` | List available skills |
+| `/minimax` | Media generation commands |
 | `/save` `/load` | Session management |
 | `/tokens` | Show usage |
 
 ## Skills
 
-Skills are workflow templates in `skills/`. Run with `/skills <name>`.
+Skills are multi-step workflows that combine chat + media tools. Examples:
 
-Available: `video-studio`, `voiceover-studio`, `audiobook-studio`, `music-video-generator`, and more.
+- `video-studio` - Script, narrate, and render short videos
+- `voiceover-studio` - Design voices and produce narration
+- `audiobook-studio` - Convert text to multi-chapter audiobooks
+- `music-video-generator` - Sync generated music with video
 
-Create your own by adding a `SKILL.md` file to a new folder in `~/.minimax/skills/`.
+Run with `/skills <name>`. Create your own in `~/.minimax/skills/`.
 
 ## Documentation
 
