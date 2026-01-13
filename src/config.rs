@@ -382,6 +382,13 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 
 /// Save an API key to the config file. Creates the file if it doesn't exist.
 pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
+    fn is_api_key_assignment(line: &str) -> bool {
+        let trimmed = line.trim_start();
+        trimmed
+            .strip_prefix("api_key")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    }
+
     let config_path = default_config_path()
         .context("Failed to resolve config path: home directory not found.")?;
 
@@ -394,7 +401,7 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
             // Replace existing api_key line
             let mut result = String::new();
             for line in existing.lines() {
-                if line.trim_start().starts_with("api_key") {
+                if is_api_key_assignment(line) {
                     let _ = writeln!(result, "api_key = \"{api_key}\"");
                 } else {
                     result.push_str(line);
@@ -621,5 +628,33 @@ mod tests {
 
         let err = apply_profile(config, Some("missing")).unwrap_err();
         assert!(err.to_string().contains("Available profiles: none"));
+    }
+
+    #[test]
+    fn test_save_api_key_doesnt_match_similar_keys() -> Result<()> {
+        let _lock = env_lock().lock().unwrap();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_root =
+            env::temp_dir().join(format!("minimax-cli-api-key-test-{}-{}", std::process::id(), nanos));
+        fs::create_dir_all(&temp_root)?;
+        let _guard = EnvGuard::new(&temp_root);
+
+        let config_path = temp_root.join(".minimax").join("config.toml");
+        ensure_parent_dir(&config_path)?;
+        fs::write(
+            &config_path,
+            "api_key_backup = \"old\"\napi_key = \"current\"\n",
+        )?;
+
+        let path = save_api_key("new-key")?;
+        assert_eq!(path, config_path);
+
+        let contents = fs::read_to_string(&config_path)?;
+        assert!(contents.contains("api_key_backup = \"old\""));
+        assert!(contents.contains("api_key = \"new-key\""));
+        Ok(())
     }
 }
