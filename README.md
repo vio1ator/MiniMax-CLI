@@ -3,7 +3,6 @@
 ![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
 ![crates.io](https://img.shields.io/crates/v/minimax-cli)
 ![npm](https://img.shields.io/npm/v/@hmbown/minimax-cli)
-![PyPI](https://img.shields.io/pypi/v/MiniMax-CLI)
 
 Unofficial terminal UI (TUI) + CLI for the [MiniMax platform](https://platform.minimax.io): chat with **MiniMax-M2.1**, run an approval-gated tool-using agent, and generate media (images, video, music, TTS).
 
@@ -20,24 +19,19 @@ Not affiliated with MiniMax Inc.
 ## Quickstart
 
 1. Get an API key from https://platform.minimax.io
-2. Run `minimax` (or `minimax-cli` if you installed via pip) and paste your key when prompted (saved to `~/.minimax/config.toml`), or set `MINIMAX_API_KEY`
+2. Run `minimax` and paste your key when prompted (saved to `~/.minimax/config.toml`), or set `MINIMAX_API_KEY`
 3. Press `F1` or run `/help` for the in-app command list
 
 ## Install
 
 ### Prebuilt (recommended)
 
-NPM and Python packages are thin wrappers that download the platform-appropriate Rust binary from GitHub Releases.
+The NPM package is a thin wrapper that downloads the platform-appropriate Rust binary from GitHub Releases.
 
 ```bash
 # npm / bun (installs `minimax`)
 npm install -g @hmbown/minimax-cli
 bun install -g @hmbown/minimax-cli
-
-# pip / uv (installs `minimax-cli`)
-pip install MiniMax-CLI
-uv pip install MiniMax-CLI
-```
 
 ### From source (Rust)
 
@@ -65,8 +59,6 @@ minimax --yolo               # Start in Agent mode + auto-approve tools (dangero
 
 minimax init                 # Generate a starter AGENTS.md for the current directory
 ```
-
-If you installed via pip, run the same commands as `minimax-cli ...` (it downloads the `minimax` binary and then execs it).
 
 Shell completions:
 
