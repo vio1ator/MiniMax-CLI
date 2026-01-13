@@ -29,7 +29,7 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 pub struct McpConfig {
     #[serde(default)]
     pub timeouts: McpTimeouts,
-    #[serde(default)]
+    #[serde(default, alias = "mcpServers")]
     pub servers: HashMap<String, McpServerConfig>,
 }
 
@@ -599,7 +599,7 @@ struct LegacyMcpServer {
 /// Legacy config wrapper for backward compatibility
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct LegacyMcpConfig {
-    #[serde(default)]
+    #[serde(default, alias = "mcpServers")]
     servers: HashMap<String, LegacyMcpServer>,
     #[serde(default)]
     timeouts: McpTimeouts,

@@ -252,12 +252,19 @@ fn run_doctor() {
     if mcp_config.exists() {
         println!("  {} mcp.json found", "✓".green());
         if let Ok(content) = std::fs::read_to_string(&mcp_config)
-            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-            && let Some(servers) = json.get("mcpServers").and_then(|s| s.as_object())
+            && let Ok(config) = serde_json::from_str::<crate::mcp::McpConfig>(&content)
         {
-            println!("  {} {} server(s) configured", "·".dimmed(), servers.len());
-            for name in servers.keys() {
-                println!("    - {name}");
+            if config.servers.is_empty() {
+                println!("  {} 0 server(s) configured", "·".dimmed());
+            } else {
+                println!(
+                    "  {} {} server(s) configured",
+                    "·".dimmed(),
+                    config.servers.len()
+                );
+                for name in config.servers.keys() {
+                    println!("    - {name}");
+                }
             }
         }
     } else {

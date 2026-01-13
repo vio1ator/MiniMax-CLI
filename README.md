@@ -6,7 +6,7 @@
 
 Terminal client for [MiniMax M2.1](https://platform.minimax.io). Chat, agent mode, and native media generation.
 
-**Note:** Currently tested with the standard MiniMax API only. The MiniMax coding-focused plans have not been tested yet.
+**Note:** Currently tested with the standard MiniMax API only. Coding Plan MCP is supported, but not fully vetted.
 
 ## What's Unique
 
@@ -65,10 +65,14 @@ Or set `MINIMAX_API_KEY` in your environment.
 
 Get an API key at [platform.minimax.io](https://platform.minimax.io).
 
+For Coding Plan MCP (web search + image understanding), see
+[`docs/coding-plan-integration.md`](docs/coding-plan-integration.md).
+
 ## Features
 
 - **Chat**: Streaming responses, 204K context, interleaved thinking
 - **Agent mode**: File operations, shell execution, MCP tool support
+- **Web search**: Built-in DuckDuckGo search tool, plus optional Coding Plan MCP
 - **Media generation**: Images, audio, video, music - all native to MiniMax
 - **Skills**: Reusable workflows for complex multi-step tasks
 
@@ -99,6 +103,7 @@ Run with `/skills <name>`. Create your own in `~/.minimax/skills/`.
 ## Documentation
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [coding-plan-integration.md](docs/coding-plan-integration.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License

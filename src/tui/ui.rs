@@ -1715,6 +1715,17 @@ fn render_help_popup(f: &mut Frame, area: Rect, scroll: usize) {
 
     help_lines.push(Line::from(""));
     help_lines.push(Line::from(vec![Span::styled(
+        "Tools:",
+        Style::default().fg(MINIMAX_CORAL).bold(),
+    )]));
+    help_lines.push(Line::from(
+        "  web_search   - Search the web (DuckDuckGo; MCP optional)",
+    ));
+    help_lines.push(Line::from(
+        "  mcp_*        - Tools exposed by MCP servers",
+    ));
+    help_lines.push(Line::from(""));
+    help_lines.push(Line::from(vec![Span::styled(
         "Keys:",
         Style::default().fg(MINIMAX_CORAL).bold(),
     )]));
@@ -2356,6 +2367,7 @@ fn is_view_image_tool(name: &str) -> bool {
 
 fn is_web_search_tool(name: &str) -> bool {
     matches!(name, "web_search" | "search_web" | "search")
+        || name.ends_with("_web_search")
 }
 
 fn web_search_query(input: &serde_json::Value) -> String {
