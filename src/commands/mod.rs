@@ -215,7 +215,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "init",
         aliases: &[],
-        description: "Generate MINIMAX.md for project",
+        description: "Generate AGENTS.md for project",
         usage: "/init",
     },
     CommandInfo {

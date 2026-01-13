@@ -1,4 +1,4 @@
-//! /init command - Generate MINIMAX.md for project
+//! /init command - Generate AGENTS.md for project
 
 use std::fmt::Write;
 use std::path::Path;
@@ -7,28 +7,26 @@ use crate::tui::app::App;
 
 use super::CommandResult;
 
-/// Generate a MINIMAX.md file for the current project
+/// Generate an AGENTS.md file for the current project
 pub fn init(app: &mut App) -> CommandResult {
     let workspace = &app.workspace;
 
-    // Check if MINIMAX.md already exists
-    let minimax_path = workspace.join("MINIMAX.md");
-    if minimax_path.exists() {
-        return CommandResult::error(
-            "MINIMAX.md already exists. Delete it first or use MINIMAX.override.md for customizations.",
-        );
+    // Check if AGENTS.md already exists
+    let agents_path = workspace.join("AGENTS.md");
+    if agents_path.exists() {
+        return CommandResult::error("AGENTS.md already exists. Delete it first to reinitialize.");
     }
 
     // Detect project type and generate appropriate content
     let content = generate_project_doc(workspace);
 
     // Write the file
-    match std::fs::write(&minimax_path, &content) {
+    match std::fs::write(&agents_path, &content) {
         Ok(()) => CommandResult::message(format!(
-            "Created MINIMAX.md at {}\n\nEdit this file to customize agent behavior for your project.",
-            minimax_path.display()
+            "Created AGENTS.md at {}\n\nEdit this file to customize agent behavior for your project.",
+            agents_path.display()
         )),
-        Err(e) => CommandResult::error(format!("Failed to create MINIMAX.md: {e}")),
+        Err(e) => CommandResult::error(format!("Failed to create AGENTS.md: {e}")),
     }
 }
 

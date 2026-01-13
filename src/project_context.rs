@@ -4,8 +4,9 @@
 //! instructions and context to the AI agent. These include:
 //!
 //! - `AGENTS.md` - Project-level agent instructions (primary)
-//! - `MINIMAX.md` - Project documentation (legacy/alternative)
-//! - `.minimax/instructions.md` - Hidden instructions file
+//! - `.claude/instructions.md` - Claude-style hidden instructions
+//! - `CLAUDE.md` - Claude-style instructions
+//! - `.minimax/instructions.md` - Hidden instructions file (legacy)
 //!
 //! The loaded content is injected into the system prompt to give the agent
 //! context about the project's conventions, structure, and requirements.
@@ -20,10 +21,9 @@ use thiserror::Error;
 /// Names of project context files to look for, in priority order.
 const PROJECT_CONTEXT_FILES: &[&str] = &[
     "AGENTS.md",
-    "MINIMAX.md",
-    ".minimax/instructions.md",
     ".claude/instructions.md",
     "CLAUDE.md",
+    ".minimax/instructions.md",
 ];
 
 /// Maximum size for project context files (to prevent loading huge files)
@@ -324,29 +324,14 @@ mod tests {
     }
 
     #[test]
-    fn test_load_project_context_minimax_md() {
-        let tmp = tempdir().expect("tempdir");
-        let minimax_path = tmp.path().join("MINIMAX.md");
-        fs::write(&minimax_path, "# MiniMax Instructions").expect("write");
-
-        let ctx = load_project_context(tmp.path());
-
-        assert!(ctx.has_instructions());
-        assert!(
-            ctx.instructions
-                .as_ref()
-                .unwrap()
-                .contains("MiniMax Instructions")
-        );
-    }
-
-    #[test]
     fn test_load_project_context_priority() {
         let tmp = tempdir().expect("tempdir");
 
         // Create both files - AGENTS.md should take priority
         fs::write(tmp.path().join("AGENTS.md"), "AGENTS content").expect("write");
-        fs::write(tmp.path().join("MINIMAX.md"), "MINIMAX content").expect("write");
+        let claude_dir = tmp.path().join(".claude");
+        fs::create_dir(&claude_dir).expect("mkdir");
+        fs::write(claude_dir.join("instructions.md"), "CLAUDE content").expect("write");
 
         let ctx = load_project_context(tmp.path());
 

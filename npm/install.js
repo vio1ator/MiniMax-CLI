@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
-const VERSION = "0.2.0";
+const VERSION = "0.1.0";
 const REPO = "Hmbown/MiniMax-CLI";
 
 const PLATFORMS = {

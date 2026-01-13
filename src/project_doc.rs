@@ -1,14 +1,19 @@
 //! Project document discovery and loading
 //!
 //! Supports auto-discovery of project instructions like Claude Code.
-//! Priority: MINIMAX.override.md > MINIMAX.md > AGENTS.md
+//! Priority: AGENTS.md > .claude/instructions.md > CLAUDE.md > .minimax/instructions.md
 
 #![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
 /// Document filenames to search for (in priority order)
-pub const DOC_FILENAMES: &[&str] = &["MINIMAX.override.md", "MINIMAX.md", "AGENTS.md"];
+pub const DOC_FILENAMES: &[&str] = &[
+    "AGENTS.md",
+    ".claude/instructions.md",
+    "CLAUDE.md",
+    ".minimax/instructions.md",
+];
 
 /// Maximum bytes to read from project docs (default: 32KB)
 pub const DEFAULT_MAX_BYTES: usize = 32768;

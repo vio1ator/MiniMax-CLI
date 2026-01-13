@@ -148,7 +148,7 @@ pub struct App {
     pub current_session_id: Option<String>,
     /// Trust mode - allow access outside workspace
     pub trust_mode: bool,
-    /// Project documentation (MINIMAX.md or AGENTS.md)
+    /// Project documentation (AGENTS.md or CLAUDE.md)
     pub project_doc: Option<String>,
     /// Plan state for tracking tasks
     pub plan_state: SharedPlanState,
