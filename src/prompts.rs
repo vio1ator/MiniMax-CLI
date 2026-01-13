@@ -20,7 +20,7 @@ pub fn system_prompt_for_mode(mode: AppMode) -> SystemPrompt {
     let text = match mode {
         AppMode::Normal => NORMAL_PROMPT,
         AppMode::Edit => EDIT_PROMPT,
-        AppMode::Agent | AppMode::Rlm => AGENT_PROMPT,    // RLM mode uses agent prompt
+        AppMode::Agent | AppMode::Rlm => AGENT_PROMPT, // RLM mode uses agent prompt
         AppMode::Plan => PLAN_PROMPT,
     };
     SystemPrompt::Text(text.trim().to_string())

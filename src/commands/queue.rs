@@ -19,9 +19,7 @@ pub fn queue(app: &mut App, args: Option<&str>) -> CommandResult {
         "edit" => edit_queue(app, parts.next()),
         "drop" | "remove" | "rm" => drop_queue(app, parts.next()),
         "clear" => clear_queue(app),
-        _ => CommandResult::error(
-            "Usage: /queue [list|edit <n>|drop <n>|clear]",
-        ),
+        _ => CommandResult::error("Usage: /queue [list|edit <n>|drop <n>|clear]"),
     }
 }
 
@@ -43,7 +41,11 @@ fn list_queue(app: &mut App) -> CommandResult {
 
     lines.push(format!("Queued messages ({queued}):"));
     for (idx, message) in app.queued_messages.iter().enumerate() {
-        lines.push(format!("{}. {}", idx + 1, truncate_preview(&message.display)));
+        lines.push(format!(
+            "{}. {}",
+            idx + 1,
+            truncate_preview(&message.display)
+        ));
     }
 
     lines.push("Tip: /queue edit <n> to edit, /queue drop <n> to remove".to_string());
@@ -53,7 +55,9 @@ fn list_queue(app: &mut App) -> CommandResult {
 
 fn edit_queue(app: &mut App, index: Option<&str>) -> CommandResult {
     if app.queued_draft.is_some() {
-        return CommandResult::error("Already editing a queued message. Send it or /queue clear to discard.");
+        return CommandResult::error(
+            "Already editing a queued message. Send it or /queue clear to discard.",
+        );
     }
     let index = match parse_index(index) {
         Ok(index) => index,

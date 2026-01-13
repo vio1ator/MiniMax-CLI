@@ -209,7 +209,10 @@ impl QueuedMessage {
 
     pub fn content(&self) -> String {
         if let Some(skill_instruction) = self.skill_instruction.as_ref() {
-            format!("{skill_instruction}\n\n---\n\nUser request: {}", self.display)
+            format!(
+                "{skill_instruction}\n\n---\n\nUser request: {}",
+                self.display
+            )
         } else {
             self.display.clone()
         }

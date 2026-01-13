@@ -1,12 +1,20 @@
 # MiniMax CLI
 
-![MiniMax CLI hero](assets/hero.jpg)
+```
+ __  __ _       _ __  __
+|  \/  (_)_ __ (_)  \/  | __ ___  __
+| |\/| | | '_ \| | |\/| |/ _` \ \/ /
+| |  | | | | | | | |  | | (_| |>  <
+|_|  |_|_|_| |_|_|_|  |_|\__,_/_/\_\  CLI
+```
+
+> **ALPHA SOFTWARE** - This is an unofficial community project, not affiliated with MiniMax Inc.
+
+![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
 
 **Terminal-native agent for MiniMax M2.1** — tools, skills, media generation, and lightning-fast workflows.
 
 > ⚡ **Powered by MiniMax M2.1** with 204K context, interleaved thinking, and first-class media tools
-
-![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)
 
 ---
 
@@ -254,10 +262,7 @@ See the `skills/` directory for more examples!
 ## 📚 Documentation
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System architecture overview
-- **[docs/TUI_UPGRADES.md](docs/TUI_UPGRADES.md)** — UI changes and enhancements
-- **[docs/VOICE_AND_TONE.md](docs/VOICE_AND_TONE.md)** — CLI personality guidelines
-- **[CODEX_MAIN_UI_UX_PARITY_CHECKLIST.md](CODEX_MAIN_UI_UX_PARITY_CHECKLIST.md)** — UI/UX quality checklist
-- **[LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md)** — Release readiness checklist
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — Development setup and guidelines
 
 ---
 
@@ -294,4 +299,4 @@ Made with ❤️ by the community
 
 ---
 
-*MiniMax and the MiniMax logo are trademarks of MiniMax Inc. This is an unofficial CLI project.*
+> **Disclaimer:** This is an **unofficial**, **alpha-quality** community project. It is not affiliated with, endorsed by, or supported by MiniMax Inc. MiniMax and the MiniMax logo are trademarks of MiniMax Inc. Use at your own risk.

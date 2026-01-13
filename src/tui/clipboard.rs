@@ -4,8 +4,10 @@
 
 #![allow(dead_code)]
 
+#[cfg(target_os = "macos")]
 use std::io::Write;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 

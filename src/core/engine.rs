@@ -204,8 +204,7 @@ fn parse_tool_input(buffer: &str) -> Option<serde_json::Value> {
     {
         return Some(value);
     }
-    if let Ok(serde_json::Value::String(inner)) =
-        serde_json::from_str::<serde_json::Value>(trimmed)
+    if let Ok(serde_json::Value::String(inner)) = serde_json::from_str::<serde_json::Value>(trimmed)
         && let Ok(value) = serde_json::from_str::<serde_json::Value>(&inner)
     {
         return Some(value);
@@ -235,8 +234,7 @@ fn strip_code_fences(text: &str) -> Option<String> {
 }
 
 fn extract_json_segment(text: &str) -> Option<String> {
-    extract_balanced_segment(text, '{', '}')
-        .or_else(|| extract_balanced_segment(text, '[', ']'))
+    extract_balanced_segment(text, '{', '}').or_else(|| extract_balanced_segment(text, '[', ']'))
 }
 
 fn extract_balanced_segment(text: &str, open: char, close: char) -> Option<String> {
@@ -487,8 +485,10 @@ impl Engine {
         self.config.trust_mode = trust_mode;
 
         // Update system prompt to match the current mode
-        self.session.system_prompt =
-            Some(prompts::system_prompt_for_mode_with_context(mode, &self.config.workspace));
+        self.session.system_prompt = Some(prompts::system_prompt_for_mode_with_context(
+            mode,
+            &self.config.workspace,
+        ));
 
         // Build tool registry and tool list for the current mode
         let todo_list = Arc::new(Mutex::new(TodoList::new()));
@@ -571,10 +571,7 @@ impl Engine {
         let pool = match self.ensure_mcp_pool().await {
             Ok(pool) => pool,
             Err(err) => {
-                let _ = self
-                    .tx_event
-                    .send(Event::status(err.to_string()))
-                    .await;
+                let _ = self.tx_event.send(Event::status(err.to_string())).await;
                 return Vec::new();
             }
         };
@@ -604,8 +601,7 @@ impl Engine {
             .call_tool(name, input)
             .await
             .map_err(|e| ToolError::execution_failed(format!("MCP tool failed: {e}")))?;
-        let content = serde_json::to_string_pretty(&result)
-            .unwrap_or_else(|_| result.to_string());
+        let content = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
         Ok(ToolResult::success(content))
     }
 
@@ -709,10 +705,8 @@ impl Engine {
                             current_text_raw = text;
                             current_text_visible.clear();
                             in_tool_call_block = false;
-                            let filtered = filter_tool_call_delta(
-                                &current_text_raw,
-                                &mut in_tool_call_block,
-                            );
+                            let filtered =
+                                filter_tool_call_delta(&current_text_raw, &mut in_tool_call_block);
                             current_text_visible.push_str(&filtered);
                             current_block_kind = Some(ContentBlockKind::Text);
                             last_text_index = Some(index as usize);
@@ -874,10 +868,7 @@ impl Engine {
 
             if pending_message_complete {
                 let index = last_text_index.unwrap_or(0);
-                let _ = self
-                    .tx_event
-                    .send(Event::MessageComplete { index })
-                    .await;
+                let _ = self.tx_event.send(Event::MessageComplete { index }).await;
             }
 
             // Add assistant message to session
