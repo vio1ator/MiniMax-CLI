@@ -104,7 +104,18 @@ impl Config {
         };
 
         apply_env_overrides(&mut config);
+        config.validate()?;
         Ok(config)
+    }
+
+    /// Validate that critical config fields are present.
+    pub fn validate(&self) -> Result<()> {
+        if let Some(ref key) = self.api_key
+            && key.trim().is_empty()
+        {
+            anyhow::bail!("api_key cannot be empty string");
+        }
+        Ok(())
     }
 
     /// Return the `MiniMax` base URL (normalized).
@@ -655,6 +666,22 @@ mod tests {
         let contents = fs::read_to_string(&config_path)?;
         assert!(contents.contains("api_key_backup = \"old\""));
         assert!(contents.contains("api_key = \"new-key\""));
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_api_key_rejected() {
+        let config = Config {
+            api_key: Some("   ".to_string()),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_missing_api_key_allowed() -> Result<()> {
+        let config = Config::default();
+        config.validate()?;
         Ok(())
     }
 }

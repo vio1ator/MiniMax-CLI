@@ -81,6 +81,8 @@ allow_shell = false                # optional
 max_subagents = 3                  # optional (1-5)
 ```
 
+Note: `api_key` must be a non-empty string.
+
 Useful environment variables:
 
 - `MINIMAX_API_KEY` (overrides config)
