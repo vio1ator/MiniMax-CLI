@@ -3,8 +3,6 @@
 //! Provides types and overlay widget for requesting user approval before
 //! executing tools that may have costs or side effects.
 
-#![allow(dead_code)]
-
 use crate::pricing::CostEstimate;
 use ratatui::{
     Frame,
@@ -26,8 +24,17 @@ pub enum ApprovalMode {
     #[default]
     Suggest,
     /// Never execute tools requiring approval
-    #[allow(dead_code)]
     Never,
+}
+
+impl ApprovalMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            ApprovalMode::Auto => "AUTO",
+            ApprovalMode::Suggest => "SUGGEST",
+            ApprovalMode::Never => "NEVER",
+        }
+    }
 }
 
 /// User's decision for a pending approval
@@ -187,7 +194,6 @@ impl ApprovalState {
     }
 
     /// Clear the overlay
-    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.pending = None;
         self.visible = false;

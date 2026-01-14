@@ -35,6 +35,7 @@ pub fn clear(app: &mut App) -> CommandResult {
     app.mark_history_updated();
     app.api_messages.clear();
     app.transcript_selection.clear();
+    app.total_conversation_tokens = 0;
     app.clear_todos();
     if let Ok(mut plan) = app.plan_state.lock() {
         *plan = PlanState::default();

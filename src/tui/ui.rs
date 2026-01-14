@@ -19,7 +19,7 @@ use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
@@ -42,7 +42,7 @@ use crate::tui::selection::TranscriptSelectionPoint;
 use crate::utils::estimate_message_chars;
 
 use super::app::{App, AppAction, AppMode, OnboardingState, QueuedMessage, TuiOptions};
-use super::approval::{ApprovalRequest, render_approval_overlay};
+use super::approval::{ApprovalMode, ApprovalRequest, render_approval_overlay, requires_approval};
 use super::history::{
     ExecCell, ExecSource, ExploringCell, ExploringEntry, GenericToolCell, HistoryCell, McpToolCell,
     PatchSummaryCell, PlanStep, PlanUpdateCell, ToolCell, ToolStatus, ViewImageCell, WebSearchCell,
@@ -116,6 +116,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
                 app.workspace.clone_from(&saved.metadata.workspace);
                 app.current_session_id = Some(saved.metadata.id.clone());
                 app.total_tokens = u32::try_from(saved.metadata.total_tokens).unwrap_or(u32::MAX);
+                app.total_conversation_tokens = app.total_tokens;
                 if let Some(prompt) = saved.system_prompt {
                     app.system_prompt = Some(SystemPrompt::Text(prompt));
                 }
@@ -321,7 +322,10 @@ async fn run_event_loop(
                     EngineEvent::TurnComplete { usage } => {
                         app.is_loading = false;
                         app.turn_started_at = None;
-                        app.total_tokens += usage.input_tokens + usage.output_tokens;
+                        let turn_tokens = usage.input_tokens + usage.output_tokens;
+                        app.total_tokens = app.total_tokens.saturating_add(turn_tokens);
+                        app.total_conversation_tokens =
+                            app.total_conversation_tokens.saturating_add(turn_tokens);
                         app.last_prompt_tokens = Some(usage.input_tokens);
                         app.last_completion_tokens = Some(usage.output_tokens);
 
@@ -406,14 +410,39 @@ async fn run_event_loop(
                         tool_name,
                         description,
                     } => {
-                        // Create approval request and show overlay
-                        let request = ApprovalRequest::new(&id, &tool_name, &serde_json::json!({}));
-                        app.approval_state.request(request);
-                        app.add_message(HistoryCell::System {
-                            content: format!(
-                                "Approval required for tool '{tool_name}': {description}"
-                            ),
-                        });
+                        let needs_approval = requires_approval(
+                            &tool_name,
+                            app.approval_mode,
+                            &app.approval_state.session_approved,
+                        );
+                        if !needs_approval {
+                            app.approval_state.clear();
+                            let _ = engine_handle
+                                .send(Op::ApproveToolCall { id: id.clone() })
+                                .await;
+                            app.add_message(HistoryCell::System {
+                                content: format!("Auto-approved tool '{tool_name}'"),
+                            });
+                        } else if app.approval_mode == ApprovalMode::Never {
+                            app.approval_state.clear();
+                            let _ =
+                                engine_handle.send(Op::DenyToolCall { id: id.clone() }).await;
+                            app.add_message(HistoryCell::System {
+                                content: format!(
+                                    "Blocked tool '{tool_name}' (approval_mode=never)"
+                                ),
+                            });
+                        } else {
+                            // Create approval request and show overlay
+                            let request =
+                                ApprovalRequest::new(&id, &tool_name, &serde_json::json!({}));
+                            app.approval_state.request(request);
+                            app.add_message(HistoryCell::System {
+                                content: format!(
+                                    "Approval required for tool '{tool_name}': {description}"
+                                ),
+                            });
+                        }
                     }
                     EngineEvent::ToolCallProgress { id, output } => {
                         app.status_message =
@@ -425,6 +454,18 @@ async fn run_event_loop(
 
         if let Some(next) = queued_to_send {
             dispatch_user_message(app, &engine_handle, next).await?;
+        }
+
+        if app.approval_state.visible
+            && app.approval_state.is_timed_out()
+            && let Some((tool_id, _)) = app
+                .approval_state
+                .apply_decision(crate::tui::approval::ReviewDecision::Denied)
+        {
+            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+            app.add_message(HistoryCell::System {
+                content: "Approval request timed out - denied".to_string(),
+            });
         }
 
         terminal.draw(|f| render(f, app))?; // app is &mut
@@ -657,6 +698,12 @@ async fn run_event_loop(
                 }
                 KeyCode::Tab => {
                     app.cycle_mode();
+                    if app.mode == AppMode::Rlm {
+                        let result = commands::execute("/repl", app);
+                        if let Some(msg) = result.message {
+                            app.add_message(HistoryCell::System { content: msg });
+                        }
+                    }
                 }
                 // Input handling
                 KeyCode::Enter => {
@@ -1115,8 +1162,8 @@ fn render_composer(f: &mut Frame, area: Rect, app: &mut App) {
 fn render_footer(f: &mut Frame, area: Rect, app: &App) {
     let mut spans = vec![
         Span::styled(
-            format!("{} mode", app.mode.label()),
-            Style::default().fg(mode_color(app.mode)).bold(),
+            format!(" {} ", app.mode.label()),
+            mode_badge_style(app.mode),
         ),
         Span::raw(" | "),
         Span::styled(context_indicator(app), Style::default().fg(Color::DarkGray)),
@@ -1185,10 +1232,20 @@ fn mode_color(mode: AppMode) -> Color {
     }
 }
 
+fn mode_badge_style(mode: AppMode) -> Style {
+    Style::default()
+        .fg(Color::White)
+        .bg(mode_color(mode))
+        .add_modifier(Modifier::BOLD)
+}
+
 fn prompt_for_mode(mode: AppMode) -> &'static str {
     match mode {
+        AppMode::Normal => "> ",
+        AppMode::Edit => "edit> ",
+        AppMode::Agent => "agent> ",
+        AppMode::Plan => "plan> ",
         AppMode::Rlm => "rlm> ",
-        _ => "> ",
     }
 }
 
@@ -1384,7 +1441,11 @@ fn render_scrollbar(f: &mut Frame, area: Rect, top: usize, visible: usize, total
 }
 
 fn context_indicator(app: &App) -> String {
-    let used = estimated_context_tokens(app);
+    let used = if app.total_conversation_tokens > 0 {
+        Some(i64::from(app.total_conversation_tokens))
+    } else {
+        estimated_context_tokens(app)
+    };
 
     if let Some(max) = context_window_for_model(&app.model) {
         if let Some(used) = used {

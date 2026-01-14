@@ -332,6 +332,20 @@ impl RlmSession {
         self.active_context = id.to_string();
     }
 
+    /// Load a file into a new context, returning line/char counts.
+    pub(crate) fn load_file(&mut self, id: &str, path: &Path) -> Result<(usize, usize)> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read file: {}", path.display()))?;
+        let source = path.to_string_lossy().to_string();
+        self.load_context(id, content, Some(source));
+
+        let ctx = self
+            .contexts
+            .get(id)
+            .context("Loaded context missing from session")?;
+        Ok((ctx.line_count, ctx.char_count))
+    }
+
     pub fn get_context(&self, id: &str) -> Option<&RlmContext> {
         self.contexts.get(id)
     }
@@ -680,6 +694,8 @@ fn print_status(session: &RlmSession) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write as _;
+    use tempfile::NamedTempFile;
 
     fn format_lines(start: usize, end: usize) -> String {
         (start..=end)
@@ -707,6 +723,22 @@ mod tests {
 
         let lines_output = eval_expr(&ctx, "lines(1, 10)")?;
         assert_eq!(lines_output, format_lines(1, 10));
+
+        Ok(())
+    }
+
+    #[test]
+    fn rlm_load_file_populates_session() -> Result<()> {
+        let mut file = NamedTempFile::new()?;
+        writeln!(file, "alpha")?;
+        writeln!(file, "beta")?;
+
+        let mut session = RlmSession::default();
+        let (line_count, char_count) = session.load_file("ctx", file.path())?;
+
+        assert_eq!(session.active_context, "ctx");
+        assert_eq!(line_count, 2);
+        assert_eq!(char_count, "alpha\nbeta\n".len());
 
         Ok(())
     }

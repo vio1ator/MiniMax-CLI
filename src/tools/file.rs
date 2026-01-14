@@ -497,17 +497,25 @@ mod tests {
         assert!(read_schema.get("properties").is_some());
 
         let write_schema = WriteFileTool.input_schema();
-        assert!(write_schema.get("required").is_some());
-        let required = write_schema.get("required").unwrap().as_array().unwrap();
+        let required = write_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("write schema should include required array");
         assert!(required.iter().any(|v| v.as_str() == Some("path")));
         assert!(required.iter().any(|v| v.as_str() == Some("content")));
 
         let edit_schema = EditFileTool.input_schema();
-        let required = edit_schema.get("required").unwrap().as_array().unwrap();
+        let required = edit_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("edit schema should include required array");
         assert_eq!(required.len(), 3);
 
         let list_schema = ListDirTool.input_schema();
-        let required = list_schema.get("required").unwrap().as_array().unwrap();
+        let required = list_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("list schema should include required array");
         assert!(required.is_empty()); // path is optional
     }
 }

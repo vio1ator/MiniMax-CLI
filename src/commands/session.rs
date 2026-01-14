@@ -86,6 +86,7 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
     app.model.clone_from(&session.metadata.model);
     app.workspace.clone_from(&session.metadata.workspace);
     app.total_tokens = u32::try_from(session.metadata.total_tokens).unwrap_or(u32::MAX);
+    app.total_conversation_tokens = app.total_tokens;
     app.current_session_id = Some(session.metadata.id.clone());
     if let Some(sp) = session.system_prompt {
         app.system_prompt = Some(crate::models::SystemPrompt::Text(sp));
@@ -142,7 +143,7 @@ pub fn export(app: &mut App, path: Option<&str>) -> CommandResult {
             HistoryCell::User { content } => ("**You:**", content.clone()),
             HistoryCell::Assistant { content, .. } => ("**Assistant:**", content.clone()),
             HistoryCell::System { content } => ("*System:*", content.clone()),
-            HistoryCell::ThinkingSummary { summary } => ("*Summary:*", summary.clone()),
+            HistoryCell::ThinkingSummary { summary } => ("*Thinking:*", summary.clone()),
             HistoryCell::Tool(tool) => ("**Tool:**", render_tool_cell(tool, 80)),
         };
 

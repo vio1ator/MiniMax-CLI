@@ -93,8 +93,11 @@ pub fn parse_tool_calls(text: &str) -> ParseResult {
     // Parse [TOOL_CALL] format
     let regex = get_tool_call_regex();
     for cap in regex.captures_iter(text) {
-        let full_match = cap.get(0).unwrap().as_str();
-        let inner = cap.get(1).unwrap().as_str().trim();
+        let (Some(full_match), Some(inner)) = (cap.get(0), cap.get(1)) else {
+            continue;
+        };
+        let full_match = full_match.as_str();
+        let inner = inner.as_str().trim();
 
         if let Some(parsed) = parse_tool_call_inner(inner, &mut id_counter) {
             tool_calls.push(parsed);
@@ -106,8 +109,11 @@ pub fn parse_tool_calls(text: &str) -> ParseResult {
     // Parse XML-style <minimax:tool_call> or <tool_call> format
     let xml_regex = get_xml_tool_call_regex();
     for cap in xml_regex.captures_iter(text) {
-        let full_match = cap.get(0).unwrap().as_str();
-        let inner = cap.get(1).unwrap().as_str().trim();
+        let (Some(full_match), Some(inner)) = (cap.get(0), cap.get(1)) else {
+            continue;
+        };
+        let full_match = full_match.as_str();
+        let inner = inner.as_str().trim();
 
         // Parse invoke blocks inside
         if let Some(parsed) = parse_invoke_block(inner, &mut id_counter) {
@@ -122,9 +128,14 @@ pub fn parse_tool_calls(text: &str) -> ParseResult {
     // Also parse standalone <invoke> blocks that might not be wrapped
     let invoke_regex = get_invoke_regex();
     for cap in invoke_regex.captures_iter(&clean_text.clone()) {
-        let full_match = cap.get(0).unwrap().as_str();
-        let tool_name = cap.get(1).unwrap().as_str();
-        let inner = cap.get(2).unwrap().as_str();
+        let (Some(full_match), Some(tool_name), Some(inner)) =
+            (cap.get(0), cap.get(1), cap.get(2))
+        else {
+            continue;
+        };
+        let full_match = full_match.as_str();
+        let tool_name = tool_name.as_str();
+        let inner = inner.as_str();
 
         let args = parse_xml_parameters(inner);
         id_counter += 1;

@@ -8,22 +8,22 @@ use crate::tui::app::{App, AppMode};
 
 use super::CommandResult;
 
+const DEFAULT_CHUNK_SIZE: usize = 2000;
+const DEFAULT_CHUNK_OVERLAP: usize = 200;
+
 pub fn welcome_message() -> String {
     [
         "MiniMax RLM Sandbox",
-        "Type expressions directly in the input bar.",
-        "",
-        "Commands:",
-        "  /load <path>         Load a file into context",
-        "  /status              Show loaded contexts",
-        "  /save-session <path> Save RLM session to file",
-        "  /repl                Show this help again",
+        "Commands: /load <file>, /repl, /status, /help",
+        "Type /mode normal to exit",
         "",
         "Expressions:",
         "  len(ctx)",
         "  search(\"pattern\")",
         "  lines(1, 20)",
         "  chunk(2000, 200)",
+        "",
+        "Tip: /save-session <path> persists the current RLM session.",
     ]
     .join("\n")
 }
@@ -60,9 +60,10 @@ pub fn status(app: &mut App) -> CommandResult {
                 .as_ref()
                 .map(|s| format!(" (source: {s})"))
                 .unwrap_or_default();
+            let chunk_count = ctx.chunk(DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP).len();
             lines.push(format!(
-                "- {id}: {} lines, {} chars{source}",
-                ctx.line_count, ctx.char_count
+                "- {id}: {} lines, {} chars, {} chunks{source}",
+                ctx.line_count, ctx.char_count, chunk_count
             ));
         }
     }
@@ -80,32 +81,23 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
         Err(err) => return CommandResult::error(err),
     };
 
-    let content = match fs::read_to_string(&resolved) {
-        Ok(content) => content,
+    let base_id = context_id_from_path(&resolved);
+    let id = unique_context_id(&app.rlm_session, base_id);
+    let (line_count, char_count) = match app.rlm_session.load_file(&id, &resolved) {
+        Ok(stats) => stats,
         Err(err) => {
             return CommandResult::error(format!(
-                "Failed to read file {}: {err}",
+                "Failed to load {}: {err}",
                 resolved.display()
             ));
         }
     };
 
-    let base_id = context_id_from_path(&resolved);
-    let id = unique_context_id(&app.rlm_session, base_id);
-    let source = resolved.to_string_lossy().to_string();
-    app.rlm_session.load_context(&id, content, Some(source));
-
-    let ctx = app
-        .rlm_session
-        .contexts
-        .get(&id)
-        .expect("context should exist after load");
-
     CommandResult::message(format!(
         "Loaded {} ({} lines, {} chars)",
         resolved.display(),
-        ctx.line_count,
-        ctx.char_count
+        line_count,
+        char_count
     ))
 }
 

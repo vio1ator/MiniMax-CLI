@@ -26,7 +26,6 @@ mod project_doc;
 mod prompts;
 mod rlm;
 mod sandbox;
-mod session;
 mod session_manager;
 mod settings;
 mod skills;

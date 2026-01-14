@@ -16,6 +16,7 @@ pub fn show_config(app: &mut App) -> CommandResult {
          Model:          {}\n\
          Workspace:      {}\n\
          Shell enabled:  {}\n\
+         Approval mode:  {}\n\
          Max sub-agents: {}\n\
          Trust mode:     {}\n\
          Auto-compact:   {}\n\
@@ -25,6 +26,7 @@ pub fn show_config(app: &mut App) -> CommandResult {
         app.model,
         app.workspace.display(),
         if app.allow_shell { "yes" } else { "no" },
+        app.approval_mode.label(),
         app.max_subagents,
         if app.trust_mode { "yes" } else { "no" },
         if app.auto_compact { "yes" } else { "no" },
@@ -59,7 +61,8 @@ pub fn set_config(app: &mut App, args: Option<&str>) -> CommandResult {
              Available settings:\n{available}\n\n\
              Session-only settings:\n  \
              model: Current model\n  \
-             mode: Current mode\n\n\
+             mode: Current mode\n  \
+             approval_mode: auto | suggest | never\n\n\
              Add --save to persist to settings file."
         ));
     };
@@ -97,6 +100,21 @@ pub fn set_config(app: &mut App, args: Option<&str>) -> CommandResult {
                     CommandResult::message(format!("mode = {}", m.label()))
                 }
                 None => CommandResult::error("Invalid mode. Use: normal, edit, agent, plan, rlm"),
+            };
+        }
+        "approval_mode" | "approval" => {
+            let mode = match value.to_lowercase().as_str() {
+                "auto" => Some(ApprovalMode::Auto),
+                "suggest" | "suggested" => Some(ApprovalMode::Suggest),
+                "never" => Some(ApprovalMode::Never),
+                _ => None,
+            };
+            return match mode {
+                Some(m) => {
+                    app.approval_mode = m;
+                    CommandResult::message(format!("approval_mode = {}", m.label()))
+                }
+                None => CommandResult::error("Invalid approval_mode. Use: auto, suggest, never"),
             };
         }
         _ => {}

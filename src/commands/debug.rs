@@ -137,9 +137,8 @@ pub fn undo(app: &mut App) -> CommandResult {
     }
 
     // Remove from API messages
-    while !app.api_messages.is_empty() {
-        let last = &app.api_messages.last().unwrap().role;
-        if last == "user" {
+    while let Some(last) = app.api_messages.last() {
+        if last.role == "user" {
             app.api_messages.pop();
             break;
         }

@@ -40,7 +40,7 @@ impl HistoryCell {
                 render_message("System", content, system_style(), width)
             }
             HistoryCell::ThinkingSummary { summary } => {
-                render_message("Summary", summary, thinking_style(), width)
+                render_message("Thinking", summary, thinking_style(), width)
             }
             HistoryCell::Tool(cell) => cell.lines(width),
         }
@@ -781,14 +781,15 @@ pub fn extract_reasoning_summary(text: &str) -> Option<String> {
                 lines.next();
             }
             let summary = summary.trim().to_string();
-            return if summary.is_empty() {
-                None
-            } else {
-                Some(summary)
-            };
+            return if summary.is_empty() { None } else { Some(summary) };
         }
     }
-    None
+    let fallback = text.trim();
+    if fallback.is_empty() {
+        None
+    } else {
+        Some(fallback.to_string())
+    }
 }
 
 fn render_message(prefix: &str, content: &str, style: Style, width: u16) -> Vec<Line<'static>> {
@@ -1021,4 +1022,23 @@ fn thinking_style() -> Style {
     Style::default()
         .fg(Color::DarkGray)
         .add_modifier(Modifier::ITALIC | Modifier::DIM)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_reasoning_summary;
+
+    #[test]
+    fn extract_reasoning_summary_prefers_summary_block() {
+        let text = "Thinking...\nSummary: First line\nSecond line\n\nTail";
+        let summary = extract_reasoning_summary(text).expect("summary should exist");
+        assert_eq!(summary, "First line\nSecond line");
+    }
+
+    #[test]
+    fn extract_reasoning_summary_falls_back_to_full_text() {
+        let text = "Line one\nLine two";
+        let summary = extract_reasoning_summary(text).expect("summary should exist");
+        assert_eq!(summary, "Line one\nLine two");
+    }
 }

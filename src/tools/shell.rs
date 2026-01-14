@@ -793,7 +793,9 @@ mod tests {
         assert_eq!(result.status, ShellStatus::Running);
         assert!(result.task_id.is_some());
 
-        let task_id = result.task_id.unwrap();
+        let task_id = result
+            .task_id
+            .expect("background execution should return task_id");
 
         // Wait for completion
         let final_result = manager
@@ -825,7 +827,9 @@ mod tests {
             .execute(&sleep_command(60), None, 5000, true)
             .expect("execute");
 
-        let task_id = result.task_id.unwrap();
+        let task_id = result
+            .task_id
+            .expect("background execution should return task_id");
 
         // Kill it
         let killed = manager.kill(&task_id).expect("kill");

@@ -397,22 +397,18 @@ impl McpPool {
 
     /// Get or create a connection to a server
     pub async fn get_or_connect(&mut self, server_name: &str) -> Result<&mut McpConnection> {
-        // Check if we already have a ready connection
-        let needs_reconnect = match self.connections.get(server_name) {
-            Some(conn) if conn.is_ready() => {
-                // Connection exists and is ready - return it directly
-                return Ok(self
-                    .connections
-                    .get_mut(server_name)
-                    .expect("connection exists - just checked"));
-            }
-            Some(_) => true, // Connection exists but not ready
-            None => false,   // No connection exists
-        };
-
-        if needs_reconnect {
-            self.connections.remove(server_name);
+        let is_ready = self
+            .connections
+            .get(server_name)
+            .map(|conn| conn.is_ready())
+            .unwrap_or(false);
+        if is_ready {
+            return self.connections.get_mut(server_name).ok_or_else(|| {
+                anyhow::anyhow!("MCP connection disappeared for {server_name}")
+            });
         }
+
+        self.connections.remove(server_name);
 
         let server_config = self
             .config
@@ -433,10 +429,9 @@ impl McpPool {
         .await?;
 
         self.connections.insert(server_name.to_string(), connection);
-        Ok(self
-            .connections
+        self.connections
             .get_mut(server_name)
-            .expect("connection just inserted"))
+            .ok_or_else(|| anyhow::anyhow!("Failed to store MCP connection for {server_name}"))
     }
 
     /// Connect to all enabled servers, returning errors for failed connections

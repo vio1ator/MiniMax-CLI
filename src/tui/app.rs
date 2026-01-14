@@ -91,7 +91,6 @@ pub struct TuiOptions {
     /// Auto-approve tool executions (yolo mode)
     pub yolo: bool,
     /// Resume a previous session by ID
-    #[allow(dead_code)] // Used in future session resume feature
     pub resume_session_id: Option<String>,
 }
 
@@ -130,6 +129,8 @@ pub struct App {
     #[allow(dead_code)]
     pub compact_threshold: usize,
     pub total_tokens: u32,
+    /// Tokens used in the current conversation (reset on clear/load)
+    pub total_conversation_tokens: u32,
     pub allow_shell: bool,
     pub max_subagents: usize,
     // Onboarding
@@ -144,7 +145,6 @@ pub struct App {
     pub clipboard: ClipboardHandler,
     // Tool approval system
     pub approval_state: ApprovalState,
-    #[allow(dead_code)] // Used by engine to decide when to send ApprovalRequired
     pub approval_mode: ApprovalMode,
     /// Current session ID for auto-save updates
     pub current_session_id: Option<String>,
@@ -331,6 +331,7 @@ impl App {
             auto_compact: false,
             compact_threshold: 50000,
             total_tokens: 0,
+            total_conversation_tokens: 0,
             allow_shell,
             max_subagents,
             onboarding: if needs_onboarding {
