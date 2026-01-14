@@ -403,9 +403,10 @@ impl McpPool {
             .map(|conn| conn.is_ready())
             .unwrap_or(false);
         if is_ready {
-            return self.connections.get_mut(server_name).ok_or_else(|| {
-                anyhow::anyhow!("MCP connection disappeared for {server_name}")
-            });
+            return self
+                .connections
+                .get_mut(server_name)
+                .ok_or_else(|| anyhow::anyhow!("MCP connection disappeared for {server_name}"));
         }
 
         self.connections.remove(server_name);

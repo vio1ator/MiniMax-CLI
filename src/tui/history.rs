@@ -781,7 +781,11 @@ pub fn extract_reasoning_summary(text: &str) -> Option<String> {
                 lines.next();
             }
             let summary = summary.trim().to_string();
-            return if summary.is_empty() { None } else { Some(summary) };
+            return if summary.is_empty() {
+                None
+            } else {
+                Some(summary)
+            };
         }
     }
     let fallback = text.trim();

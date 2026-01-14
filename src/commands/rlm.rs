@@ -86,10 +86,7 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
     let (line_count, char_count) = match app.rlm_session.load_file(&id, &resolved) {
         Ok(stats) => stats,
         Err(err) => {
-            return CommandResult::error(format!(
-                "Failed to load {}: {err}",
-                resolved.display()
-            ));
+            return CommandResult::error(format!("Failed to load {}: {err}", resolved.display()));
         }
     };
 

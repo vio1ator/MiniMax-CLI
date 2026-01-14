@@ -128,8 +128,7 @@ pub fn parse_tool_calls(text: &str) -> ParseResult {
     // Also parse standalone <invoke> blocks that might not be wrapped
     let invoke_regex = get_invoke_regex();
     for cap in invoke_regex.captures_iter(&clean_text.clone()) {
-        let (Some(full_match), Some(tool_name), Some(inner)) =
-            (cap.get(0), cap.get(1), cap.get(2))
+        let (Some(full_match), Some(tool_name), Some(inner)) = (cap.get(0), cap.get(1), cap.get(2))
         else {
             continue;
         };

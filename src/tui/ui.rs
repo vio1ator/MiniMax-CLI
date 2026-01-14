@@ -425,8 +425,9 @@ async fn run_event_loop(
                             });
                         } else if app.approval_mode == ApprovalMode::Never {
                             app.approval_state.clear();
-                            let _ =
-                                engine_handle.send(Op::DenyToolCall { id: id.clone() }).await;
+                            let _ = engine_handle
+                                .send(Op::DenyToolCall { id: id.clone() })
+                                .await;
                             app.add_message(HistoryCell::System {
                                 content: format!(
                                     "Blocked tool '{tool_name}' (approval_mode=never)"
