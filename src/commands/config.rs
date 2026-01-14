@@ -61,7 +61,6 @@ pub fn set_config(app: &mut App, args: Option<&str>) -> CommandResult {
              Available settings:\n{available}\n\n\
              Session-only settings:\n  \
              model: Current model\n  \
-             mode: Current mode\n  \
              approval_mode: auto | suggest | never\n\n\
              Add --save to persist to settings file."
         ));
@@ -84,23 +83,6 @@ pub fn set_config(app: &mut App, args: Option<&str>) -> CommandResult {
         "model" => {
             app.model = value.to_string();
             return CommandResult::message(format!("model = {value}"));
-        }
-        "mode" => {
-            let mode = match value.to_lowercase().as_str() {
-                "normal" | "n" => Some(AppMode::Normal),
-                "edit" | "e" => Some(AppMode::Edit),
-                "agent" | "a" => Some(AppMode::Agent),
-                "plan" | "p" => Some(AppMode::Plan),
-                "rlm" | "r" => Some(AppMode::Rlm),
-                _ => None,
-            };
-            return match mode {
-                Some(m) => {
-                    app.set_mode(m);
-                    CommandResult::message(format!("mode = {}", m.label()))
-                }
-                None => CommandResult::error("Invalid mode. Use: normal, edit, agent, plan, rlm"),
-            };
         }
         "approval_mode" | "approval" => {
             let mode = match value.to_lowercase().as_str() {
@@ -156,14 +138,10 @@ pub fn set_config(app: &mut App, args: Option<&str>) -> CommandResult {
     }
 }
 
-/// Enable YOLO mode (agent + shell)
+/// Enable YOLO mode (shell + trust + auto-approve)
 pub fn yolo(app: &mut App) -> CommandResult {
-    app.allow_shell = true;
-    app.trust_mode = true;
-    app.yolo = true;
-    app.approval_mode = ApprovalMode::Auto;
-    app.set_mode(AppMode::Agent);
-    CommandResult::message("YOLO mode enabled - agent mode + shell + trust + auto-approve!")
+    app.set_mode(AppMode::Yolo);
+    CommandResult::message("YOLO mode enabled - shell + trust + auto-approve!")
 }
 
 /// Enable trust mode (file access outside workspace)
@@ -219,6 +197,6 @@ mod tests {
         assert!(app.trust_mode);
         assert!(app.yolo);
         assert_eq!(app.approval_mode, ApprovalMode::Auto);
-        assert_eq!(app.mode, AppMode::Agent);
+        assert_eq!(app.mode, AppMode::Yolo);
     }
 }

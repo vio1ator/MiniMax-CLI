@@ -1,11 +1,11 @@
-//! Core commands: help, clear, exit, mode, model
+//! Core commands: help, clear, exit, model
 
 use std::fmt::Write;
 
 use crate::tools::plan::PlanState;
-use crate::tui::app::{App, AppAction, AppMode};
+use crate::tui::app::{App, AppAction};
 
-use super::{CommandResult, rlm};
+use super::CommandResult;
 
 /// Show help information
 pub fn help(app: &mut App, topic: Option<&str>) -> CommandResult {
@@ -47,42 +47,6 @@ pub fn clear(app: &mut App) -> CommandResult {
 /// Exit the application
 pub fn exit() -> CommandResult {
     CommandResult::action(AppAction::Quit)
-}
-
-/// Switch or view current mode
-pub fn mode(app: &mut App, mode_name: Option<&str>) -> CommandResult {
-    if let Some(mode_str) = mode_name {
-        let new_mode = match mode_str.to_lowercase().as_str() {
-            "normal" | "n" => Some(AppMode::Normal),
-            "edit" | "e" => Some(AppMode::Edit),
-            "agent" | "a" => Some(AppMode::Agent),
-            "plan" | "p" => Some(AppMode::Plan),
-            "rlm" | "r" => Some(AppMode::Rlm),
-            _ => None,
-        };
-
-        match new_mode {
-            Some(m) => {
-                app.set_mode(m);
-                if m == AppMode::Rlm {
-                    let mut msg = String::from("Switched to RLM mode.\n");
-                    msg.push_str(&rlm::welcome_message());
-                    CommandResult::message(msg)
-                } else {
-                    CommandResult::message(format!("Switched to {} mode", m.label()))
-                }
-            }
-            None => CommandResult::error(format!(
-                "Unknown mode: {mode_str}. Use: normal, edit, agent, plan, rlm"
-            )),
-        }
-    } else {
-        CommandResult::message(format!(
-            "Current mode: {} - {}",
-            app.mode.label(),
-            app.mode.description()
-        ))
-    }
 }
 
 /// Switch or view current model

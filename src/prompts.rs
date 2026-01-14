@@ -11,39 +11,48 @@ use std::path::Path;
 // Prompt files loaded at compile time
 pub const BASE_PROMPT: &str = include_str!("prompts/base.txt");
 pub const NORMAL_PROMPT: &str = include_str!("prompts/normal.txt");
-pub const EDIT_PROMPT: &str = include_str!("prompts/edit.txt");
 pub const AGENT_PROMPT: &str = include_str!("prompts/agent.txt");
 pub const PLAN_PROMPT: &str = include_str!("prompts/plan.txt");
+pub const RLM_PROMPT: &str = include_str!("prompts/rlm.txt");
 
 /// Get the system prompt for a specific mode
 pub fn system_prompt_for_mode(mode: AppMode) -> SystemPrompt {
     let text = match mode {
         AppMode::Normal => NORMAL_PROMPT,
-        AppMode::Edit => EDIT_PROMPT,
-        AppMode::Agent | AppMode::Rlm => AGENT_PROMPT, // RLM mode uses agent prompt
+        AppMode::Agent | AppMode::Yolo => AGENT_PROMPT,
         AppMode::Plan => PLAN_PROMPT,
+        AppMode::Rlm => RLM_PROMPT,
     };
     SystemPrompt::Text(text.trim().to_string())
 }
 
 /// Get the system prompt for a specific mode with project context
-pub fn system_prompt_for_mode_with_context(mode: AppMode, workspace: &Path) -> SystemPrompt {
+pub fn system_prompt_for_mode_with_context(
+    mode: AppMode,
+    workspace: &Path,
+    rlm_summary: Option<&str>,
+) -> SystemPrompt {
     let base_prompt = match mode {
         AppMode::Normal => NORMAL_PROMPT,
-        AppMode::Edit => EDIT_PROMPT,
-        AppMode::Agent | AppMode::Rlm => AGENT_PROMPT,
+        AppMode::Agent | AppMode::Yolo => AGENT_PROMPT,
         AppMode::Plan => PLAN_PROMPT,
+        AppMode::Rlm => RLM_PROMPT,
     };
 
     // Load project context from workspace
     let project_context = load_project_context_with_parents(workspace);
 
     // Combine base prompt with project context
-    let full_prompt = if let Some(project_block) = project_context.as_system_block() {
+    let mut full_prompt = if let Some(project_block) = project_context.as_system_block() {
         format!("{}\n\n{}", base_prompt.trim(), project_block)
     } else {
         base_prompt.trim().to_string()
     };
+
+    if mode == AppMode::Rlm {
+        let summary = rlm_summary.unwrap_or("No RLM contexts loaded.");
+        full_prompt = format!("{full_prompt}\n\nRLM Context Summary:\n{summary}");
+    }
 
     SystemPrompt::Text(full_prompt)
 }

@@ -9,6 +9,7 @@ pub mod minimax;
 pub mod patch;
 pub mod plan;
 pub mod registry;
+pub mod rlm;
 pub mod search;
 pub mod shell;
 pub mod spec;
@@ -55,3 +56,6 @@ pub use todo::TodoWriteTool;
 
 // Re-export plan types
 pub use plan::UpdatePlanTool;
+
+// Re-export RLM tools
+pub use rlm::{RlmExecTool, RlmLoadTool, RlmQueryTool, RlmStatusTool};

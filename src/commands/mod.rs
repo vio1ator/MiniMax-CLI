@@ -8,7 +8,7 @@ mod core;
 mod debug;
 mod init;
 mod queue;
-mod rlm;
+pub mod rlm;
 mod session;
 mod skills;
 
@@ -97,12 +97,6 @@ pub const COMMANDS: &[CommandInfo] = &[
         usage: "/exit",
     },
     CommandInfo {
-        name: "mode",
-        aliases: &[],
-        description: "Switch or view current mode",
-        usage: "/mode [normal|edit|agent|plan|rlm]",
-    },
-    CommandInfo {
         name: "model",
         aliases: &[],
         description: "Switch or view current model",
@@ -154,7 +148,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "repl",
         aliases: &[],
-        description: "Enter RLM REPL mode",
+        description: "Toggle RLM REPL mode",
         usage: "/repl",
     },
     CommandInfo {
@@ -185,7 +179,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     CommandInfo {
         name: "yolo",
         aliases: &[],
-        description: "Enable agent mode with shell execution",
+        description: "Enable YOLO mode (shell + trust + auto-approve)",
         usage: "/yolo",
     },
     CommandInfo {
@@ -278,7 +272,6 @@ pub fn execute(cmd: &str, app: &mut App) -> CommandResult {
         "help" | "?" => core::help(app, arg),
         "clear" => core::clear(app),
         "exit" | "quit" | "q" => core::exit(),
-        "mode" => core::mode(app, arg),
         "model" => core::model(app, arg),
         "queue" | "queued" => queue::queue(app, arg),
         "subagents" | "agents" => core::subagents(app),

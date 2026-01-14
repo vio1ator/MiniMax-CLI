@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- RLM prompt with external-context guidance and REPL tooling
+- RLM tools for context loading, execution, status, and sub-queries (rlm_load, rlm_exec, rlm_status, rlm_query)
+- RLM query usage tracking and variable buffers
+- Workspace-relative `@path` support for RLM loads
+
+### Changed
+- Removed Edit mode; RLM chat is default with /repl toggle
+
 ## [0.1.0] - 2026-01-12
 
 ### Added

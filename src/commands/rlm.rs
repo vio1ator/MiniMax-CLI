@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::rlm::RlmSession;
+use crate::rlm::{context_id_from_path, unique_context_id};
 use crate::tui::app::{App, AppMode};
 
 use super::CommandResult;
@@ -14,14 +14,18 @@ const DEFAULT_CHUNK_OVERLAP: usize = 200;
 pub fn welcome_message() -> String {
     [
         "MiniMax RLM Sandbox",
-        "Commands: /load <file>, /repl, /status, /help",
-        "Type /mode normal to exit",
+        "Commands: /load <file>, /repl, /status, /save-session",
+        "Press Tab to exit RLM mode",
+        "Use /repl to toggle expression mode (chat is the default)",
+        "Tip: /load @path forces workspace-relative paths (e.g. @docs/rlm-paper.txt)",
         "",
         "Expressions:",
         "  len(ctx)",
         "  search(\"pattern\")",
         "  lines(1, 20)",
         "  chunk(2000, 200)",
+        "  chunk_sections(20000)",
+        "  vars(), get(\"name\"), set(\"name\", \"value\")",
         "",
         "Tip: /save-session <path> persists the current RLM session.",
     ]
@@ -32,39 +36,51 @@ pub fn repl(app: &mut App) -> CommandResult {
     if app.mode != AppMode::Rlm {
         app.set_mode(AppMode::Rlm);
     }
+    if app.rlm_repl_active {
+        app.rlm_repl_active = false;
+        return CommandResult::message("Exited RLM REPL mode. Chat is active.");
+    }
+    app.rlm_repl_active = true;
     CommandResult::message(welcome_message())
 }
 
 pub fn status(app: &mut App) -> CommandResult {
-    if app.rlm_session.contexts.is_empty() {
+    let session = match app.rlm_session.lock() {
+        Ok(session) => session,
+        Err(_) => return CommandResult::error("Failed to access RLM session"),
+    };
+
+    if session.contexts.is_empty() {
         return CommandResult::message("No RLM contexts loaded. Use /load <path>.");
     }
 
     let mut lines = Vec::new();
     lines.push("RLM Session".to_string());
+    lines.push(format!("Active context: {}", session.active_context));
+    lines.push(format!("Loaded contexts: {}", session.contexts.len()));
     lines.push(format!(
-        "Active context: {}",
-        app.rlm_session.active_context
-    ));
-    lines.push(format!(
-        "Loaded contexts: {}",
-        app.rlm_session.contexts.len()
+        "Queries: {} | Input tokens: {} | Output tokens: {}",
+        session.usage.queries, session.usage.input_tokens, session.usage.output_tokens
     ));
 
-    let mut ids: Vec<_> = app.rlm_session.contexts.keys().collect();
+    let mut ids: Vec<_> = session.contexts.keys().collect();
     ids.sort();
     for id in ids {
-        if let Some(ctx) = app.rlm_session.contexts.get(id) {
+        if let Some(ctx) = session.contexts.get(id) {
             let source = ctx
                 .source_path
                 .as_ref()
                 .map(|s| format!(" (source: {s})"))
                 .unwrap_or_default();
             let chunk_count = ctx.chunk(DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP).len();
+            let section_count = ctx.chunk_sections(20_000).len();
             lines.push(format!(
-                "- {id}: {} lines, {} chars, {} chunks{source}",
-                ctx.line_count, ctx.char_count, chunk_count
+                "- {id}: {} lines, {} chars, {} chunks, {} sections{source}",
+                ctx.line_count, ctx.char_count, chunk_count, section_count
             ));
+            if !ctx.variables.is_empty() {
+                lines.push(format!("  variables: {}", ctx.variables.len()));
+            }
         }
     }
 
@@ -81,9 +97,14 @@ pub fn load(app: &mut App, path: Option<&str>) -> CommandResult {
         Err(err) => return CommandResult::error(err),
     };
 
+    let mut session = match app.rlm_session.lock() {
+        Ok(session) => session,
+        Err(_) => return CommandResult::error("Failed to access RLM session"),
+    };
+
     let base_id = context_id_from_path(&resolved);
-    let id = unique_context_id(&app.rlm_session, base_id);
-    let (line_count, char_count) = match app.rlm_session.load_file(&id, &resolved) {
+    let id = unique_context_id(&session, &base_id);
+    let (line_count, char_count) = match session.load_file(&id, &resolved) {
         Ok(stats) => stats,
         Err(err) => {
             return CommandResult::error(format!("Failed to load {}: {err}", resolved.display()));
@@ -119,7 +140,11 @@ pub fn save_session(app: &mut App, path: Option<&str>) -> CommandResult {
         ));
     }
 
-    let json = match serde_json::to_string_pretty(&app.rlm_session) {
+    let session = match app.rlm_session.lock() {
+        Ok(session) => session,
+        Err(_) => return CommandResult::error("Failed to access RLM session"),
+    };
+    let json = match serde_json::to_string_pretty(&*session) {
         Ok(json) => json,
         Err(err) => return CommandResult::error(format!("Failed to serialize session: {err}")),
     };
@@ -131,39 +156,75 @@ pub fn save_session(app: &mut App, path: Option<&str>) -> CommandResult {
 }
 
 fn resolve_path(app: &App, raw: &str) -> Result<PathBuf, String> {
-    let candidate = if Path::new(raw).is_absolute() {
+    let raw = raw.trim();
+    let (raw, force_workspace) = if let Some(stripped) = raw.strip_prefix('@') {
+        (stripped.trim(), true)
+    } else {
+        (raw, false)
+    };
+    if raw.is_empty() {
+        return Err("Usage: /load <path> (use @ for workspace-relative paths)".to_string());
+    }
+
+    let candidate = if force_workspace {
+        app.workspace.join(raw.trim_start_matches(['/', '\\']))
+    } else if Path::new(raw).is_absolute() {
         PathBuf::from(raw)
     } else {
         app.workspace.join(raw)
     };
-    let canonical = candidate
+    let canonical = candidate.canonicalize().map_err(|err| {
+        let mut message = format!("Failed to resolve path {}: {err}", candidate.display());
+        if !force_workspace {
+            message.push_str("\nTip: use /load @path to resolve relative to the workspace.");
+        }
+        message
+    })?;
+    let workspace_root = app
+        .workspace
         .canonicalize()
-        .map_err(|err| format!("Failed to resolve path {}: {err}", candidate.display()))?;
-    if !app.trust_mode && !canonical.starts_with(&app.workspace) {
+        .unwrap_or_else(|_| app.workspace.clone());
+    if !app.trust_mode && !canonical.starts_with(&workspace_root) {
         return Err("Path is outside workspace. Use /trust to allow access.".to_string());
     }
     Ok(canonical)
 }
 
-fn context_id_from_path(path: &Path) -> String {
-    path.file_name()
-        .and_then(|s| s.to_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("context")
-        .to_string()
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::tui::app::{App, TuiOptions};
+    use std::fs;
 
-fn unique_context_id(session: &RlmSession, base: String) -> String {
-    if !session.contexts.contains_key(&base) {
-        return base;
+    fn make_app(workspace: PathBuf) -> App {
+        let options = TuiOptions {
+            model: "test-model".to_string(),
+            workspace,
+            allow_shell: false,
+            max_subagents: 1,
+            skills_dir: PathBuf::from("."),
+            memory_path: PathBuf::from("memory.md"),
+            notes_path: PathBuf::from("notes.txt"),
+            mcp_config_path: PathBuf::from("mcp.json"),
+            use_memory: false,
+            start_in_agent_mode: false,
+            yolo: false,
+            resume_session_id: None,
+        };
+        App::new(options, &Config::default())
     }
 
-    for idx in 2..=99 {
-        let candidate = format!("{base}-{idx}");
-        if !session.contexts.contains_key(&candidate) {
-            return candidate;
-        }
-    }
+    #[test]
+    fn resolve_path_with_at_prefix_uses_workspace_root() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let docs_dir = tmp.path().join("docs");
+        fs::create_dir_all(&docs_dir).expect("create docs dir");
+        let file_path = docs_dir.join("rlm-paper.txt");
+        fs::write(&file_path, "hello").expect("write file");
 
-    format!("{base}-{}", session.contexts.len() + 1)
+        let app = make_app(tmp.path().to_path_buf());
+        let resolved = resolve_path(&app, "@/docs/rlm-paper.txt").expect("resolve path with @");
+        assert_eq!(resolved, file_path.canonicalize().expect("canonicalize"));
+    }
 }

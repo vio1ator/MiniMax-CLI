@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::config::{Config, has_api_key, save_api_key};
 use crate::hooks::{HookContext, HookEvent, HookExecutor, HookResult};
 use crate::models::{Message, SystemPrompt};
-use crate::rlm::RlmSession;
+use crate::rlm::{RlmSession, SharedRlmSession};
 use crate::tools::plan::{SharedPlanState, new_shared_plan_state};
 use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
 use crate::tui::approval::{ApprovalMode, ApprovalState};
@@ -20,6 +20,7 @@ use crate::tui::history::HistoryCell;
 use crate::tui::scrolling::{MouseScrollState, TranscriptScroll};
 use crate::tui::selection::TranscriptSelection;
 use crate::tui::transcript::TranscriptViewCache;
+use std::sync::{Arc, Mutex};
 
 // === Types ===
 
@@ -36,8 +37,8 @@ pub enum OnboardingState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
     Normal,
-    Edit,
     Agent,
+    Yolo,
     Plan,
     Rlm,
 }
@@ -47,8 +48,8 @@ impl AppMode {
     pub fn label(self) -> &'static str {
         match self {
             AppMode::Normal => "NORMAL",
-            AppMode::Edit => "EDIT",
             AppMode::Agent => "AGENT",
+            AppMode::Yolo => "YOLO",
             AppMode::Plan => "PLAN",
             AppMode::Rlm => "RLM",
         }
@@ -59,8 +60,8 @@ impl AppMode {
     pub fn description(self) -> &'static str {
         match self {
             AppMode::Normal => "Chat mode - ask questions, get answers",
-            AppMode::Edit => "Edit mode - modify files with AI assistance",
             AppMode::Agent => "Agent mode - autonomous task execution with tools",
+            AppMode::Yolo => "YOLO mode - full tool access without approvals",
             AppMode::Plan => "Plan mode - design before implementing",
             AppMode::Rlm => "RLM mode - recursive language model sandbox",
         }
@@ -86,7 +87,7 @@ pub struct TuiOptions {
     pub mcp_config_path: PathBuf,
     #[allow(dead_code)]
     pub use_memory: bool,
-    /// Start in agent mode (--yolo flag)
+    /// Start in agent mode (defaults to normal; --yolo starts in YOLO)
     pub start_in_agent_mode: bool,
     /// Auto-approve tool executions (yolo mode)
     pub yolo: bool,
@@ -155,7 +156,9 @@ pub struct App {
     /// Plan state for tracking tasks
     pub plan_state: SharedPlanState,
     /// RLM sandbox session state
-    pub rlm_session: RlmSession,
+    pub rlm_session: SharedRlmSession,
+    /// Whether RLM REPL input mode is active.
+    pub rlm_repl_active: bool,
     /// Todo list for `TodoWriteTool`
     #[allow(dead_code)] // For future engine integration
     pub todos: SharedTodoList,
@@ -245,7 +248,7 @@ impl App {
         let TuiOptions {
             model,
             workspace,
-            allow_shell,
+            allow_shell: _allow_shell,
             max_subagents,
             skills_dir: global_skills_dir,
             memory_path: _,
@@ -259,8 +262,10 @@ impl App {
         // Check if API key exists
         let needs_onboarding = !has_api_key(config);
 
-        // Start in agent mode if --yolo flag was passed
-        let initial_mode = if start_in_agent_mode {
+        // Start in YOLO mode if --yolo flag was passed
+        let initial_mode = if yolo {
+            AppMode::Yolo
+        } else if start_in_agent_mode {
             AppMode::Agent
         } else {
             AppMode::Normal
@@ -269,8 +274,8 @@ impl App {
         let history = if needs_onboarding {
             Vec::new() // No welcome message during onboarding
         } else {
-            let mode_msg = if start_in_agent_mode {
-                " | YOLO MODE (agent + shell enabled)"
+            let mode_msg = if yolo {
+                " | YOLO MODE (shell + trust + auto-approve)"
             } else {
                 ""
             };
@@ -332,7 +337,7 @@ impl App {
             compact_threshold: 50000,
             total_tokens: 0,
             total_conversation_tokens: 0,
-            allow_shell,
+            allow_shell: true,
             max_subagents,
             onboarding: if needs_onboarding {
                 OnboardingState::Welcome
@@ -342,19 +347,20 @@ impl App {
             api_key_input: String::new(),
             api_key_cursor: 0,
             hooks,
-            yolo,
+            yolo: initial_mode == AppMode::Yolo,
             clipboard: ClipboardHandler::new(),
             approval_state: ApprovalState::new(),
-            approval_mode: if yolo {
+            approval_mode: if matches!(initial_mode, AppMode::Yolo | AppMode::Rlm) {
                 ApprovalMode::Auto
             } else {
                 ApprovalMode::Suggest
             },
             current_session_id: None,
-            trust_mode: yolo,
+            trust_mode: initial_mode == AppMode::Yolo,
             project_doc: None,
             plan_state,
-            rlm_session: RlmSession::default(),
+            rlm_session: Arc::new(Mutex::new(RlmSession::default())),
+            rlm_repl_active: false,
             todos: new_shared_todo_list(),
             tool_log: Vec::new(),
             session_cost: 0.0,
@@ -410,6 +416,15 @@ impl App {
         let previous_mode = self.mode;
         self.mode = mode;
         self.status_message = Some(format!("Switched to {} mode", mode.label()));
+        self.allow_shell = true;
+        self.trust_mode = matches!(mode, AppMode::Yolo);
+        self.yolo = matches!(mode, AppMode::Yolo);
+        self.approval_mode = if matches!(mode, AppMode::Yolo | AppMode::Rlm) {
+            ApprovalMode::Auto
+        } else {
+            ApprovalMode::Suggest
+        };
+        self.rlm_repl_active = false;
 
         // Execute mode change hooks
         let context = HookContext::new()
@@ -420,13 +435,14 @@ impl App {
         let _ = self.hooks.execute(HookEvent::ModeChange, &context);
     }
 
-    /// Cycle through modes: Normal → Agent → RLM → Plan → Normal
+    /// Cycle through modes: Normal → Plan → Agent → YOLO → RLM → Normal
     pub fn cycle_mode(&mut self) {
         let next = match self.mode {
-            AppMode::Normal => AppMode::Agent,
-            AppMode::Agent => AppMode::Rlm,
-            AppMode::Rlm => AppMode::Plan,
-            AppMode::Plan | AppMode::Edit => AppMode::Normal,
+            AppMode::Normal => AppMode::Plan,
+            AppMode::Plan => AppMode::Agent,
+            AppMode::Agent => AppMode::Yolo,
+            AppMode::Yolo => AppMode::Rlm,
+            AppMode::Rlm => AppMode::Normal,
         };
         self.set_mode(next);
     }

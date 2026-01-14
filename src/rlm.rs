@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -13,6 +14,7 @@ use rustyline::history::DefaultHistory;
 use serde::{Deserialize, Serialize};
 
 use crate::config::Config;
+use crate::models::Usage;
 
 // === Command Args ===
 
@@ -290,6 +292,135 @@ impl RlmContext {
 
         chunks
     }
+
+    /// Chunk the context by paragraph/heading boundaries up to a max char size.
+    #[must_use]
+    pub fn chunk_sections(&self, max_chars: usize) -> Vec<ChunkInfo> {
+        let max_chars = max_chars.max(1);
+        let mut sections = Vec::new();
+        let mut start = 0;
+        let mut offset = 0;
+
+        for segment in self.content.split_inclusive('\n') {
+            let line = segment.trim_end_matches('\n');
+            let trimmed = line.trim();
+            let is_heading = trimmed.starts_with('#');
+            let is_blank = trimmed.is_empty();
+
+            if is_heading && offset > start {
+                sections.push((start, offset));
+                start = offset;
+            }
+
+            offset += segment.len();
+
+            if is_blank && offset > start {
+                sections.push((start, offset));
+                start = offset;
+            }
+        }
+
+        if offset > start {
+            sections.push((start, offset));
+        }
+
+        let mut chunks = Vec::new();
+        let mut chunk_start = 0;
+        let mut chunk_end = 0;
+        let mut chunk_index = 0;
+
+        for (section_start, section_end) in sections {
+            if chunk_end == 0 {
+                chunk_start = section_start;
+            }
+            if section_end - chunk_start > max_chars && chunk_end > chunk_start {
+                chunks.push(build_chunk_info(
+                    &self.content,
+                    chunk_index,
+                    chunk_start,
+                    chunk_end,
+                ));
+                chunk_index += 1;
+                chunk_start = section_start;
+            }
+            chunk_end = section_end;
+        }
+
+        if chunk_end > chunk_start {
+            chunks.push(build_chunk_info(
+                &self.content,
+                chunk_index,
+                chunk_start,
+                chunk_end,
+            ));
+        }
+
+        chunks
+    }
+
+    /// Chunk the context by line count.
+    #[must_use]
+    pub fn chunk_lines(&self, max_lines: usize) -> Vec<ChunkInfo> {
+        let max_lines = max_lines.max(1);
+        let mut chunks = Vec::new();
+        let mut chunk_start = 0;
+        let mut offset = 0;
+        let mut line_count = 0;
+        let mut chunk_index = 0;
+
+        for segment in self.content.split_inclusive('\n') {
+            line_count += 1;
+            offset += segment.len();
+
+            if line_count >= max_lines {
+                chunks.push(build_chunk_info(
+                    &self.content,
+                    chunk_index,
+                    chunk_start,
+                    offset,
+                ));
+                chunk_index += 1;
+                chunk_start = offset;
+                line_count = 0;
+            }
+        }
+
+        if chunk_start < self.content.len() {
+            chunks.push(build_chunk_info(
+                &self.content,
+                chunk_index,
+                chunk_start,
+                self.content.len(),
+            ));
+        }
+
+        chunks
+    }
+
+    #[must_use]
+    pub fn get_var(&self, name: &str) -> Option<&str> {
+        self.variables.get(name).map(String::as_str)
+    }
+
+    pub fn set_var(&mut self, name: &str, value: String) {
+        self.variables.insert(name.to_string(), value);
+    }
+
+    pub fn append_var(&mut self, name: &str, value: String) {
+        self.variables
+            .entry(name.to_string())
+            .and_modify(|existing| {
+                if !existing.is_empty() {
+                    existing.push('\n');
+                }
+                existing.push_str(&value);
+            })
+            .or_insert(value);
+    }
+
+    pub fn remove_var(&mut self, name: &str) -> Option<String> {
+        self.variables.remove(name)
+    }
 }
 
 /// Search match result with surrounding context lines.
@@ -309,11 +440,55 @@ pub struct ChunkInfo {
     pub preview: String,
 }
 
+fn build_chunk_info(content: &str, index: usize, start: usize, end: usize) -> ChunkInfo {
+    let safe_start = start.min(content.len());
+    let safe_end = end.min(content.len());
+    let preview_end = (safe_start + 100).min(safe_end);
+    let preview = content[safe_start..preview_end].replace('\n', " ");
+
+    ChunkInfo {
+        index,
+        start_char: safe_start,
+        end_char: safe_end,
+        preview,
+    }
+}
+
+/// Usage stats for RLM sub-queries.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RlmUsage {
+    pub queries: u32,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub total_chars_sent: u64,
+    pub total_chars_received: u64,
+}
+
+impl RlmUsage {
+    pub fn record(&mut self, usage: &Usage, chars_sent: usize, chars_received: usize) {
+        self.queries = self.queries.saturating_add(1);
+        self.input_tokens = self
+            .input_tokens
+            .saturating_add(u64::from(usage.input_tokens));
+        self.output_tokens = self
+            .output_tokens
+            .saturating_add(u64::from(usage.output_tokens));
+        self.total_chars_sent = self
+            .total_chars_sent
+            .saturating_add(u64::try_from(chars_sent).unwrap_or(u64::MAX));
+        self.total_chars_received = self
+            .total_chars_received
+            .saturating_add(u64::try_from(chars_received).unwrap_or(u64::MAX));
+    }
+}
+
 /// Stored RLM session state for persistence.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RlmSession {
     pub contexts: HashMap<String, RlmContext>,
     pub active_context: String,
+    #[serde(default)]
+    pub usage: RlmUsage,
 }
 
 impl Default for RlmSession {
@@ -321,9 +496,12 @@ impl Default for RlmSession {
         Self {
             contexts: HashMap::new(),
             active_context: "default".to_string(),
+            usage: RlmUsage::default(),
         }
     }
 }
+
+pub type SharedRlmSession = Arc<Mutex<RlmSession>>;
 
 impl RlmSession {
     pub fn load_context(&mut self, id: &str, content: String, source_path: Option<String>) {
@@ -354,6 +532,67 @@ impl RlmSession {
     pub fn get_context_mut(&mut self, id: &str) -> Option<&mut RlmContext> {
         self.contexts.get_mut(id)
     }
+
+    pub fn record_query_usage(&mut self, usage: &Usage, chars_sent: usize, chars_received: usize) {
+        self.usage.record(usage, chars_sent, chars_received);
+    }
+}
+
+pub fn context_id_from_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("context")
+        .to_string()
+}
+
+pub fn unique_context_id(session: &RlmSession, base: &str) -> String {
+    if !session.contexts.contains_key(base) {
+        return base.to_string();
+    }
+
+    for idx in 2..=99 {
+        let candidate = format!("{base}-{idx}");
+        if !session.contexts.contains_key(&candidate) {
+            return candidate;
+        }
+    }
+
+    format!("{base}-{}", session.contexts.len() + 1)
+}
+
+pub fn session_summary(session: &RlmSession) -> String {
+    if session.contexts.is_empty() {
+        return "No RLM contexts loaded.".to_string();
+    }
+
+    let mut lines = Vec::new();
+    lines.push(format!("Active context: {}", session.active_context));
+    lines.push(format!("Loaded contexts: {}", session.contexts.len()));
+    lines.push(format!(
+        "Queries: {} | Input tokens: {} | Output tokens: {}",
+        session.usage.queries, session.usage.input_tokens, session.usage.output_tokens
+    ));
+
+    let mut ids: Vec<_> = session.contexts.keys().collect();
+    ids.sort();
+    for id in ids {
+        if let Some(ctx) = session.contexts.get(id) {
+            let source = ctx
+                .source_path
+                .as_ref()
+                .map(|s| format!(" (source: {s})"))
+                .unwrap_or_default();
+            lines.push(format!(
+                "- {id}: {} lines, {} chars, {} vars{source}",
+                ctx.line_count,
+                ctx.char_count,
+                ctx.variables.len()
+            ));
+        }
+    }
+
+    lines.join("\n")
 }
 
 #[allow(dead_code)]
@@ -439,14 +678,78 @@ fn load_context_from_stdin_or_error(context_id: &str) -> Result<String> {
     )
 }
 
-pub fn eval_in_session(session: &RlmSession, code: &str) -> Result<String> {
+pub fn eval_in_session(session: &mut RlmSession, code: &str) -> Result<String> {
+    let active = session.active_context.clone();
     let ctx = session
-        .get_context(&session.active_context)
+        .get_context_mut(&active)
         .context("No context loaded. Use /load <path> first.")?;
-    eval_expr(ctx, code)
+    eval_expr_mut(ctx, code)
 }
 
 pub fn eval_expr(ctx: &RlmContext, code: &str) -> Result<String> {
+    eval_expr_internal(ctx, code)
+}
+
+pub fn eval_expr_mut(ctx: &mut RlmContext, code: &str) -> Result<String> {
+    let code = code.trim();
+
+    if code == "vars" || code == "vars()" {
+        if ctx.variables.is_empty() {
+            return Ok("No variables set.".to_string());
+        }
+        let mut names: Vec<_> = ctx.variables.keys().collect();
+        names.sort();
+        let mut lines = Vec::new();
+        for name in names {
+            if let Some(value) = ctx.variables.get(name) {
+                let preview = value.chars().take(80).collect::<String>();
+                lines.push(format!("{name}: {} chars | {preview}", value.len()));
+            }
+        }
+        return Ok(lines.join("\n"));
+    }
+
+    if code.starts_with("get(") && code.ends_with(')') {
+        let arg = &code[4..code.len() - 1];
+        let name = parse_string_arg(arg);
+        return ctx
+            .get_var(&name)
+            .map(|v| v.to_string())
+            .ok_or_else(|| anyhow::anyhow!("Unknown variable '{name}'"));
+    }
+
+    if code.starts_with("set(") && code.ends_with(')') {
+        let args = &code[4..code.len() - 1];
+        let (name, value) = parse_two_args(args)?;
+        ctx.set_var(&name, value);
+        return Ok(format!("Set variable '{name}'."));
+    }
+
+    if code.starts_with("append(") && code.ends_with(')') {
+        let args = &code[7..code.len() - 1];
+        let (name, value) = parse_two_args(args)?;
+        ctx.append_var(&name, value);
+        return Ok(format!("Appended to variable '{name}'."));
+    }
+
+    if code.starts_with("del(") && code.ends_with(')') {
+        let arg = &code[4..code.len() - 1];
+        let name = parse_string_arg(arg);
+        if ctx.remove_var(&name).is_some() {
+            return Ok(format!("Deleted variable '{name}'."));
+        }
+        return Ok(format!("Variable '{name}' not found."));
+    }
+
+    if code == "clear_vars" || code == "clear_vars()" {
+        ctx.variables.clear();
+        return Ok("Cleared all variables.".to_string());
+    }
+
+    eval_expr_internal(ctx, code)
+}
+
+fn eval_expr_internal(ctx: &RlmContext, code: &str) -> Result<String> {
     // Simple expression evaluator for RLM
     // Supports: len(ctx), lines(start, end), search("pattern"), peek(start, end), chunk(size)
     let code = code.trim();
@@ -510,6 +813,44 @@ pub fn eval_expr(ctx: &RlmContext, code: &str) -> Result<String> {
         return Ok(output.join("\n"));
     }
 
+    if code.starts_with("chunk_sections(") && code.ends_with(')') {
+        let args = &code[15..code.len() - 1];
+        let size: usize = args.trim().parse().unwrap_or(20_000);
+        let chunks = ctx.chunk_sections(size);
+        let output: Vec<String> = chunks
+            .iter()
+            .map(|c| {
+                format!(
+                    "Section {}: chars {}..{} - {}",
+                    c.index,
+                    c.start_char,
+                    c.end_char,
+                    &c.preview[..50.min(c.preview.len())]
+                )
+            })
+            .collect();
+        return Ok(output.join("\n"));
+    }
+
+    if code.starts_with("chunk_lines(") && code.ends_with(')') {
+        let args = &code[12..code.len() - 1];
+        let size: usize = args.trim().parse().unwrap_or(200);
+        let chunks = ctx.chunk_lines(size);
+        let output: Vec<String> = chunks
+            .iter()
+            .map(|c| {
+                format!(
+                    "Lines {}: chars {}..{} - {}",
+                    c.index,
+                    c.start_char,
+                    c.end_char,
+                    &c.preview[..50.min(c.preview.len())]
+                )
+            })
+            .collect();
+        return Ok(output.join("\n"));
+    }
+
     if code == "head" || code == "head()" {
         return Ok(format_lines(ctx, 1, Some(10)));
     }
@@ -520,7 +861,7 @@ pub fn eval_expr(ctx: &RlmContext, code: &str) -> Result<String> {
     }
 
     anyhow::bail!(
-        "Failed to evaluate expression: unknown expression '{code}'. Supported: len, line_count, peek(start, end), lines(start, end), search(pattern), chunk(size, overlap), head, tail"
+        "Failed to evaluate expression: unknown expression '{code}'. Supported: len, line_count, peek(start, end), lines(start, end), search(pattern), chunk(size, overlap), chunk_sections(max_chars), chunk_lines(max_lines), vars, get(name), set(name, value), append(name, value), del(name), clear_vars, head, tail"
     )
 }
 
@@ -534,6 +875,50 @@ fn parse_line_arg(input: Option<&&str>, default: usize) -> usize {
 fn parse_line_arg_opt(input: Option<&str>) -> Option<usize> {
     let value = input.and_then(|s| s.parse::<usize>().ok())?;
     Some(value.max(1))
+}
+
+fn parse_string_arg(arg: &str) -> String {
+    arg.trim().trim_matches('"').trim_matches('\'').to_string()
+}
+
+fn parse_two_args(input: &str) -> Result<(String, String)> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = '\0';
+
+    for ch in input.chars() {
+        if (ch == '"' || ch == '\'') && (!in_quotes || ch == quote_char) {
+            if in_quotes && ch == quote_char {
+                in_quotes = false;
+            } else if !in_quotes {
+                in_quotes = true;
+                quote_char = ch;
+            }
+            current.push(ch);
+            continue;
+        }
+
+        if ch == ',' && !in_quotes {
+            parts.push(current.trim().to_string());
+            current.clear();
+            continue;
+        }
+
+        current.push(ch);
+    }
+
+    if !current.trim().is_empty() {
+        parts.push(current.trim().to_string());
+    }
+
+    if parts.len() < 2 {
+        anyhow::bail!("Expected two arguments separated by a comma");
+    }
+
+    let left = parse_string_arg(&parts[0]);
+    let right = parse_string_arg(&parts[1]);
+    Ok((left, right))
 }
 
 fn format_lines(ctx: &RlmContext, start_line: usize, end_line: Option<usize>) -> String {
@@ -741,5 +1126,32 @@ mod tests {
         assert_eq!(char_count, "alpha\nbeta\n".len());
 
         Ok(())
+    }
+
+    #[test]
+    fn rlm_variables_set_get_append() -> Result<()> {
+        let content = "line 1\nline 2\n".to_string();
+        let mut ctx = RlmContext::new("test", content, None);
+
+        let _ = eval_expr_mut(&mut ctx, "set(\"answer\", \"alpha\")")?;
+        assert_eq!(ctx.get_var("answer"), Some("alpha"));
+
+        let _ = eval_expr_mut(&mut ctx, "append(\"answer\", \"beta\")")?;
+        let value = ctx.get_var("answer").unwrap_or("");
+        assert!(value.contains("alpha"));
+        assert!(value.contains("beta"));
+
+        let vars = eval_expr_mut(&mut ctx, "vars()")?;
+        assert!(vars.contains("answer"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn rlm_chunk_sections_splits_on_headings() {
+        let content = "# Title\nalpha\n\n## Section\nbeta\n\npara".to_string();
+        let ctx = RlmContext::new("test", content, None);
+        let chunks = ctx.chunk_sections(20);
+        assert!(!chunks.is_empty());
     }
 }

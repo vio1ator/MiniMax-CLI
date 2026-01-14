@@ -25,8 +25,9 @@ use crate::models::{
     ContentBlock, ContentBlockStart, Delta, Message, MessageRequest, StreamEvent, Tool, Usage,
 };
 use crate::prompts;
+use crate::rlm::{RlmSession, SharedRlmSession, session_summary};
 use crate::tools::plan::PlanState;
-use crate::tools::spec::{ToolError, ToolResult};
+use crate::tools::spec::{ApprovalLevel, ToolError, ToolResult};
 use crate::tools::subagent::{
     SharedSubAgentManager, SubAgentRuntime, SubAgentType, new_shared_subagent_manager,
 };
@@ -61,6 +62,8 @@ pub struct EngineConfig {
     pub max_steps: u32,
     /// Maximum number of concurrently active subagents.
     pub max_subagents: usize,
+    /// Shared RLM session state.
+    pub rlm_session: SharedRlmSession,
 }
 
 impl Default for EngineConfig {
@@ -74,6 +77,7 @@ impl Default for EngineConfig {
             mcp_config_path: PathBuf::from("mcp.json"),
             max_steps: 100,
             max_subagents: 5,
+            rlm_session: Arc::new(Mutex::new(RlmSession::default())),
         }
     }
 }
@@ -87,6 +91,8 @@ pub struct EngineHandle {
     pub rx_event: Arc<RwLock<mpsc::Receiver<Event>>>,
     /// Cancellation token for the current request
     cancel_token: CancellationToken,
+    /// Send approval decisions to the engine
+    tx_approval: mpsc::Sender<ApprovalDecision>,
 }
 
 impl EngineHandle {
@@ -106,6 +112,22 @@ impl EngineHandle {
     pub fn is_cancelled(&self) -> bool {
         self.cancel_token.is_cancelled()
     }
+
+    /// Approve a pending tool call
+    pub async fn approve_tool_call(&self, id: impl Into<String>) -> Result<()> {
+        self.tx_approval
+            .send(ApprovalDecision::Approved { id: id.into() })
+            .await?;
+        Ok(())
+    }
+
+    /// Deny a pending tool call
+    pub async fn deny_tool_call(&self, id: impl Into<String>) -> Result<()> {
+        self.tx_approval
+            .send(ApprovalDecision::Denied { id: id.into() })
+            .await?;
+        Ok(())
+    }
 }
 
 // === Engine ===
@@ -119,8 +141,15 @@ pub struct Engine {
     subagent_manager: SharedSubAgentManager,
     mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     rx_op: mpsc::Receiver<Op>,
+    rx_approval: mpsc::Receiver<ApprovalDecision>,
     tx_event: mpsc::Sender<Event>,
     cancel_token: CancellationToken,
+}
+
+#[derive(Debug, Clone)]
+enum ApprovalDecision {
+    Approved { id: String },
+    Denied { id: String },
 }
 
 // === Internal stream helpers ===
@@ -260,6 +289,7 @@ impl Engine {
     pub fn new(config: EngineConfig, api_config: &Config) -> (Self, EngineHandle) {
         let (tx_op, rx_op) = mpsc::channel(32);
         let (tx_event, rx_event) = mpsc::channel(256);
+        let (tx_approval, rx_approval) = mpsc::channel(64);
         let cancel_token = CancellationToken::new();
 
         // Create clients for both providers
@@ -279,7 +309,7 @@ impl Engine {
 
         // Set up system prompt with project context (default to agent mode)
         let system_prompt =
-            prompts::system_prompt_for_mode_with_context(AppMode::Agent, &config.workspace);
+            prompts::system_prompt_for_mode_with_context(AppMode::Agent, &config.workspace, None);
         session.system_prompt = Some(system_prompt);
 
         let subagent_manager =
@@ -293,6 +323,7 @@ impl Engine {
             subagent_manager,
             mcp_pool: None,
             rx_op,
+            rx_approval,
             tx_event,
             cancel_token: cancel_token.clone(),
         };
@@ -301,6 +332,7 @@ impl Engine {
             tx_op,
             rx_event: Arc::new(RwLock::new(rx_event)),
             cancel_token,
+            tx_approval,
         };
 
         (engine, handle)
@@ -508,9 +540,19 @@ impl Engine {
         self.config.trust_mode = trust_mode;
 
         // Update system prompt to match the current mode
+        let rlm_summary = if mode == AppMode::Rlm {
+            self.config
+                .rlm_session
+                .lock()
+                .ok()
+                .map(|session| session_summary(&session))
+        } else {
+            None
+        };
         self.session.system_prompt = Some(prompts::system_prompt_for_mode_with_context(
             mode,
             &self.config.workspace,
+            rlm_summary.as_deref(),
         ));
 
         // Build tool registry and tool list for the current mode
@@ -518,14 +560,21 @@ impl Engine {
         let plan_state = Arc::new(Mutex::new(PlanState::default()));
 
         let tool_context = self.build_tool_context();
-        let builder = ToolRegistryBuilder::new().with_full_agent_tools(
+        let mut builder = ToolRegistryBuilder::new().with_full_agent_tools(
             self.session.allow_shell,
             todo_list.clone(),
             plan_state.clone(),
         );
+        if mode == AppMode::Rlm {
+            builder = builder.with_rlm_tools(
+                self.config.rlm_session.clone(),
+                self.anthropic_client.clone(),
+                self.session.model.clone(),
+            );
+        }
 
         let tool_registry = match mode {
-            AppMode::Agent | AppMode::Rlm => {
+            AppMode::Agent | AppMode::Yolo | AppMode::Rlm => {
                 let runtime = if let Some(client) = self.anthropic_client.clone() {
                     Some(SubAgentRuntime::new(
                         client,
@@ -626,6 +675,30 @@ impl Engine {
             .map_err(|e| ToolError::execution_failed(format!("MCP tool failed: {e}")))?;
         let content = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
         Ok(ToolResult::success(content))
+    }
+
+    async fn await_tool_approval(&mut self, tool_id: &str) -> Result<bool, ToolError> {
+        loop {
+            tokio::select! {
+                _ = self.cancel_token.cancelled() => {
+                    return Err(ToolError::execution_failed(
+                        "Request cancelled while awaiting approval".to_string(),
+                    ));
+                }
+                decision = self.rx_approval.recv() => {
+                    let Some(decision) = decision else {
+                        return Err(ToolError::execution_failed(
+                            "Approval channel closed".to_string(),
+                        ));
+                    };
+                    match decision {
+                        ApprovalDecision::Approved { id } if id == tool_id => return Ok(true),
+                        ApprovalDecision::Denied { id } if id == tool_id => return Ok(false),
+                        _ => continue,
+                    }
+                }
+            }
+        }
     }
 
     /// Handle a turn using the Anthropic API (original implementation)
@@ -919,7 +992,43 @@ impl Engine {
                 let tool_input = tool.input.clone();
                 let start = Instant::now();
 
-                let result = if McpPool::is_mcp_tool(tool_name) {
+                let mut approval_required = false;
+                let mut approval_description = "Tool execution requires approval".to_string();
+                if let Some(registry) = tool_registry {
+                    if let Some(spec) = registry.get(tool_name) {
+                        approval_required = spec.approval_level() != ApprovalLevel::Auto;
+                        approval_description = spec.description().to_string();
+                    }
+                }
+
+                let result = if approval_required {
+                    let _ = self
+                        .tx_event
+                        .send(Event::ApprovalRequired {
+                            id: tool_id.clone(),
+                            tool_name: tool_name.clone(),
+                            description: approval_description,
+                        })
+                        .await;
+
+                    match self.await_tool_approval(tool_id).await {
+                        Ok(true) => {
+                            if McpPool::is_mcp_tool(tool_name) {
+                                self.execute_mcp_tool(tool_name, tool_input.clone()).await
+                            } else if let Some(registry) = tool_registry {
+                                registry.execute_full(tool_name, tool_input.clone()).await
+                            } else {
+                                Err(ToolError::not_available(format!(
+                                    "tool '{tool_name}' is not registered"
+                                )))
+                            }
+                        }
+                        Ok(false) => Err(ToolError::permission_denied(format!(
+                            "Tool '{tool_name}' denied by user"
+                        ))),
+                        Err(err) => Err(err),
+                    }
+                } else if McpPool::is_mcp_tool(tool_name) {
                     self.execute_mcp_tool(tool_name, tool_input.clone()).await
                 } else if let Some(registry) = tool_registry {
                     registry.execute_full(tool_name, tool_input.clone()).await

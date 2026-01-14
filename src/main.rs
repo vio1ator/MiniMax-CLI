@@ -291,7 +291,7 @@ async fn main() -> Result<()> {
     };
 
     // Default: Interactive TUI
-    // --yolo enables agent mode with shell execution
+    // --yolo starts in YOLO mode (shell + trust + auto-approve)
     tui::run_tui(
         &config,
         tui::TuiOptions {

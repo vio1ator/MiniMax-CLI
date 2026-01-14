@@ -154,6 +154,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         mcp_config_path: config.mcp_config_path(),
         max_steps: 100,
         max_subagents: app.max_subagents,
+        rlm_session: app.rlm_session.clone(),
     };
 
     // Spawn the Engine - it will handle all API communication
@@ -411,23 +412,17 @@ async fn run_event_loop(
                         description,
                     } => {
                         let needs_approval = requires_approval(
+                            app.mode,
                             &tool_name,
                             app.approval_mode,
                             &app.approval_state.session_approved,
                         );
                         if !needs_approval {
                             app.approval_state.clear();
-                            let _ = engine_handle
-                                .send(Op::ApproveToolCall { id: id.clone() })
-                                .await;
-                            app.add_message(HistoryCell::System {
-                                content: format!("Auto-approved tool '{tool_name}'"),
-                            });
+                            let _ = engine_handle.approve_tool_call(id.clone()).await;
                         } else if app.approval_mode == ApprovalMode::Never {
                             app.approval_state.clear();
-                            let _ = engine_handle
-                                .send(Op::DenyToolCall { id: id.clone() })
-                                .await;
+                            let _ = engine_handle.deny_tool_call(id.clone()).await;
                             app.add_message(HistoryCell::System {
                                 content: format!(
                                     "Blocked tool '{tool_name}' (approval_mode=never)"
@@ -463,7 +458,7 @@ async fn run_event_loop(
                 .approval_state
                 .apply_decision(crate::tui::approval::ReviewDecision::Denied)
         {
-            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+            let _ = engine_handle.deny_tool_call(tool_id).await;
             app.add_message(HistoryCell::System {
                 content: "Approval request timed out - denied".to_string(),
             });
@@ -598,13 +593,10 @@ async fn run_event_loop(
                         {
                             match decision {
                                 ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
-                                    let _ = engine_handle
-                                        .send(Op::ApproveToolCall { id: tool_id })
-                                        .await;
+                                    let _ = engine_handle.approve_tool_call(tool_id).await;
                                 }
                                 ReviewDecision::Denied | ReviewDecision::Abort => {
-                                    let _ =
-                                        engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                                    let _ = engine_handle.deny_tool_call(tool_id).await;
                                 }
                             }
                         }
@@ -613,9 +605,7 @@ async fn run_event_loop(
                         if let Some((tool_id, _)) =
                             app.approval_state.apply_decision(ReviewDecision::Approved)
                         {
-                            let _ = engine_handle
-                                .send(Op::ApproveToolCall { id: tool_id })
-                                .await;
+                            let _ = engine_handle.approve_tool_call(tool_id).await;
                         }
                     }
                     KeyCode::Char('a') => {
@@ -623,23 +613,21 @@ async fn run_event_loop(
                             .approval_state
                             .apply_decision(ReviewDecision::ApprovedForSession)
                         {
-                            let _ = engine_handle
-                                .send(Op::ApproveToolCall { id: tool_id })
-                                .await;
+                            let _ = engine_handle.approve_tool_call(tool_id).await;
                         }
                     }
                     KeyCode::Char('n') => {
                         if let Some((tool_id, _)) =
                             app.approval_state.apply_decision(ReviewDecision::Denied)
                         {
-                            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                            let _ = engine_handle.deny_tool_call(tool_id).await;
                         }
                     }
                     KeyCode::Esc => {
                         if let Some((tool_id, _)) =
                             app.approval_state.apply_decision(ReviewDecision::Abort)
                         {
-                            let _ = engine_handle.send(Op::DenyToolCall { id: tool_id }).await;
+                            let _ = engine_handle.deny_tool_call(tool_id).await;
                         }
                     }
                     _ => {}
@@ -700,10 +688,10 @@ async fn run_event_loop(
                 KeyCode::Tab => {
                     app.cycle_mode();
                     if app.mode == AppMode::Rlm {
-                        let result = commands::execute("/repl", app);
-                        if let Some(msg) = result.message {
-                            app.add_message(HistoryCell::System { content: msg });
-                        }
+                        app.rlm_repl_active = false;
+                        app.add_message(HistoryCell::System {
+                            content: crate::commands::rlm::welcome_message(),
+                        });
                     }
                 }
                 // Input handling
@@ -756,9 +744,20 @@ async fn run_event_loop(
                                     }
                                 }
                             }
-                        } else if app.mode == AppMode::Rlm {
+                        } else if app.mode == AppMode::Rlm && app.rlm_repl_active {
                             handle_rlm_input(app, input);
                         } else {
+                            if app.mode == AppMode::Rlm {
+                                if let Some(path) = input.trim().strip_prefix('@') {
+                                    let command = format!("/load @{path}");
+                                    let result = commands::execute(&command, app);
+                                    if let Some(msg) = result.message {
+                                        app.add_message(HistoryCell::System { content: msg });
+                                    }
+                                    continue;
+                                }
+                            }
+
                             let queued = if let Some(mut draft) = app.queued_draft.take() {
                                 draft.display = input;
                                 draft
@@ -853,9 +852,18 @@ async fn dispatch_user_message(
     message: QueuedMessage,
 ) -> Result<()> {
     let content = message.content();
+    let rlm_summary = if app.mode == AppMode::Rlm {
+        app.rlm_session
+            .lock()
+            .ok()
+            .map(|session| rlm::session_summary(&session))
+    } else {
+        None
+    };
     app.system_prompt = Some(prompts::system_prompt_for_mode_with_context(
         app.mode,
         &app.workspace,
+        rlm_summary.as_deref(),
     ));
     app.add_message(HistoryCell::User {
         content: message.display.clone(),
@@ -882,20 +890,32 @@ async fn dispatch_user_message(
 }
 
 fn handle_rlm_input(app: &mut App, input: String) {
+    if let Some(path) = input.trim().strip_prefix('@') {
+        let command = format!("/load @{path}");
+        let result = commands::execute(&command, app);
+        if let Some(msg) = result.message {
+            app.add_message(HistoryCell::System { content: msg });
+        }
+        return;
+    }
+
     app.add_message(HistoryCell::User {
         content: input.clone(),
     });
 
-    let content = match rlm::eval_in_session(&app.rlm_session, &input) {
-        Ok(result) => {
-            let trimmed = result.trim();
-            if trimmed.is_empty() {
-                "RLM: (no output)".to_string()
-            } else {
-                format!("RLM:\n{result}")
+    let content = match app.rlm_session.lock() {
+        Ok(mut session) => match rlm::eval_in_session(&mut session, &input) {
+            Ok(result) => {
+                let trimmed = result.trim();
+                if trimmed.is_empty() {
+                    "RLM: (no output)".to_string()
+                } else {
+                    format!("RLM:\n{result}")
+                }
             }
-        }
-        Err(err) => format!("RLM error: {err}"),
+            Err(err) => format!("RLM error: {err}"),
+        },
+        Err(_) => "RLM error: failed to access session".to_string(),
     };
 
     app.add_message(HistoryCell::System { content });
@@ -1127,7 +1147,11 @@ fn render_composer(f: &mut Frame, area: Rect, app: &mut App) {
     let mut lines = Vec::new();
     if app.input.is_empty() {
         let placeholder = if app.mode == AppMode::Rlm {
-            "Type an RLM expression or /help for commands..."
+            if app.rlm_repl_active {
+                "Type an RLM expression or /repl to exit..."
+            } else {
+                "Ask a question or /repl to enter expression mode..."
+            }
         } else {
             "Type a message or /help for commands..."
         };
@@ -1226,8 +1250,8 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App) {
 fn mode_color(mode: AppMode) -> Color {
     match mode {
         AppMode::Normal => Color::Gray,
-        AppMode::Edit => Color::Blue,
         AppMode::Agent => MINIMAX_RED,
+        AppMode::Yolo => Color::Green,
         AppMode::Plan => MINIMAX_ORANGE,
         AppMode::Rlm => MINIMAX_CORAL,
     }
@@ -1243,8 +1267,8 @@ fn mode_badge_style(mode: AppMode) -> Style {
 fn prompt_for_mode(mode: AppMode) -> &'static str {
     match mode {
         AppMode::Normal => "> ",
-        AppMode::Edit => "edit> ",
         AppMode::Agent => "agent> ",
+        AppMode::Yolo => "yolo> ",
         AppMode::Plan => "plan> ",
         AppMode::Rlm => "rlm> ",
     }
@@ -1795,11 +1819,7 @@ fn render_help_popup(f: &mut Frame, area: Rect, scroll: usize) {
             "Modes:",
             Style::default().fg(MINIMAX_CORAL).bold(),
         )]),
-        Line::from("  /mode normal  - Chat mode (default)"),
-        Line::from("  /mode edit    - Edit mode (file modification)"),
-        Line::from("  /mode agent   - Agent mode (tool execution)"),
-        Line::from("  /mode plan    - Plan mode (design first)"),
-        Line::from("  /mode rlm     - RLM sandbox mode"),
+        Line::from("  Tab cycles modes: Normal → Plan → Agent → Yolo → RLM"),
         Line::from(""),
         Line::from(vec![Span::styled(
             "Commands:",
@@ -1831,6 +1851,7 @@ fn render_help_popup(f: &mut Frame, area: Rect, scroll: usize) {
     )]));
     help_lines.push(Line::from("  Enter        - Send message"));
     help_lines.push(Line::from("  Esc          - Cancel request"));
+    help_lines.push(Line::from("  Tab          - Cycle modes"));
     help_lines.push(Line::from("  Ctrl+C       - Exit"));
     help_lines.push(Line::from("  Up/Down      - Scroll this help"));
     help_lines.push(Line::from(""));

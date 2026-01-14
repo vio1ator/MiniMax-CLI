@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::client::AnthropicClient;
 use crate::models::Tool;
+use crate::rlm::SharedRlmSession;
 
 use super::spec::{ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
 
@@ -328,6 +330,22 @@ impl ToolRegistryBuilder {
             .with_todo_tool(todo_list)
             .with_plan_tool(plan_state)
             .with_minimax_tools()
+    }
+
+    /// Include RLM tools for context execution and sub-queries.
+    #[must_use]
+    pub fn with_rlm_tools(
+        self,
+        session: SharedRlmSession,
+        client: Option<AnthropicClient>,
+        model: String,
+    ) -> Self {
+        self.with_tool(Arc::new(super::rlm::RlmExecTool::new(session.clone())))
+            .with_tool(Arc::new(super::rlm::RlmLoadTool::new(session.clone())))
+            .with_tool(Arc::new(super::rlm::RlmStatusTool::new(session.clone())))
+            .with_tool(Arc::new(super::rlm::RlmQueryTool::new(
+                session, client, model,
+            )))
     }
 
     /// Include sub-agent management tools.

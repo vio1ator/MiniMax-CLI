@@ -106,13 +106,18 @@ Create a starter file:
 
 ### Modes
 
-Switch modes with `Tab` or `/mode`:
+Switch modes with `Tab`:
 
 - **Normal**: chat
-- **Edit**: file-focused assistance
-- **Agent**: multi-step tool use (with approvals)
 - **Plan**: design-first prompting
-- **RLM**: load/search/chunk large files in an in-app sandbox
+- **Agent**: multi-step tool use (with approvals)
+- **YOLO**: full tool access without approvals
+- **RLM**: chat over externalized context; use `/repl` for expression mode
+
+Approvals by mode:
+- **Normal/Plan**: prompts for file writes + shell + paid tools
+- **Agent**: prompts for shell + paid tools
+- **YOLO/RLM**: auto-approves tools
 
 ### Slash Commands (high-signal)
 
@@ -120,14 +125,14 @@ The built-in help (`F1` or `/help`) is always up to date. Common commands:
 
 | Command | What it does |
 |---|---|
-| `/mode [normal|edit|agent|plan|rlm]` | Switch modes |
 | `/model [name]` | View/set model name |
 | `/skills` | List skills |
 | `/skill <name>` | Activate a skill for your next message |
 | `/save [path]` | Save current chat to JSON |
-| `/load <path>` | Load chat JSON (or load a file into RLM context in RLM mode) |
+| `/load <path>` | Load chat JSON (or load a file into RLM context in RLM mode; use `@path` for workspace-relative paths) |
+| `/repl` | Toggle RLM expression mode |
 | `/export [path]` | Export transcript to Markdown |
-| `/yolo` | Switch to Agent mode + enable shell tool (still prompts for approval) |
+| `/yolo` | Enable YOLO mode (shell + trust + auto-approve) |
 | `/trust` | Allow file access outside workspace |
 | `/tokens` | Token totals + metadata |
 | `/context` | Context usage estimate |
@@ -139,7 +144,7 @@ The built-in help (`F1` or `/help`) is always up to date. Common commands:
 MiniMax CLI exposes a tool set to the model (file read/write, patching, web search, sub-agents, and MiniMax media APIs). By default, the TUI asks before running tools with side effects:
 
 - **File writes**: `write_file`, `edit_file`, `apply_patch`
-- **Shell**: `exec_shell` (disabled unless `allow_shell=true` or `/yolo` or `--yolo`)
+- **Shell**: `exec_shell` (approval depends on mode; YOLO/RLM auto-approve)
 - **Paid/Media**: `generate_image`, `generate_video`, `generate_music`, `tts`, voice tools, file upload/download
 
 The built-in `web_search` tool is backed by DuckDuckGo HTML results and is auto-approved.

@@ -4,6 +4,7 @@
 //! executing tools that may have costs or side effects.
 
 use crate::pricing::CostEstimate;
+use crate::tui::app::AppMode;
 use ratatui::{
     Frame,
     layout::Rect,
@@ -18,9 +19,9 @@ use std::time::{Duration, Instant};
 /// Determines when tool executions require user approval
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ApprovalMode {
-    /// Auto-approve all tools (Agent mode / --yolo flag)
+    /// Auto-approve all tools (YOLO mode / --yolo flag)
     Auto,
-    /// Suggest approval for non-safe tools (Normal/Edit/Plan modes)
+    /// Suggest approval for non-safe tools (Normal/Plan modes)
     #[default]
     Suggest,
     /// Never execute tools requiring approval
@@ -136,30 +137,31 @@ pub fn get_tool_category(name: &str) -> ToolCategory {
 
 /// Check if a tool requires approval in the given mode
 pub fn requires_approval(
+    app_mode: AppMode,
     tool_name: &str,
-    mode: ApprovalMode,
+    approval_mode: ApprovalMode,
     session_approved: &HashSet<String>,
 ) -> bool {
-    match mode {
-        ApprovalMode::Auto => false,
-        ApprovalMode::Never => {
-            let category = get_tool_category(tool_name);
-            category != ToolCategory::Safe
-        }
-        ApprovalMode::Suggest => {
-            // Already approved for session?
-            if session_approved.contains(tool_name) {
-                return false;
-            }
+    if session_approved.contains(tool_name) {
+        return false;
+    }
 
-            let category = get_tool_category(tool_name);
-            match category {
-                ToolCategory::Safe => false,
-                ToolCategory::FileWrite | ToolCategory::Shell | ToolCategory::PaidMultimedia => {
-                    true
-                }
-            }
-        }
+    let category = get_tool_category(tool_name);
+    match approval_mode {
+        ApprovalMode::Auto => false,
+        ApprovalMode::Never => category != ToolCategory::Safe,
+        ApprovalMode::Suggest => mode_requires_approval(app_mode, category),
+    }
+}
+
+fn mode_requires_approval(mode: AppMode, category: ToolCategory) -> bool {
+    match mode {
+        AppMode::Yolo | AppMode::Rlm => false,
+        AppMode::Agent => matches!(category, ToolCategory::Shell | ToolCategory::PaidMultimedia),
+        AppMode::Normal | AppMode::Plan => matches!(
+            category,
+            ToolCategory::FileWrite | ToolCategory::Shell | ToolCategory::PaidMultimedia
+        ),
     }
 }
 
