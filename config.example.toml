@@ -4,6 +4,8 @@
 # ║  Unofficial CLI for MiniMax Platform - Not affiliated with MiniMax Inc.     ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
+# See `docs/CONFIGURATION.md` for how config is loaded (profiles, env overrides, etc.).
+
 # ─────────────────────────────────────────────────────────────────────────────────
 # API Keys
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -21,20 +23,24 @@ base_url = "https://api.minimax.io"
 # Default Models
 # ─────────────────────────────────────────────────────────────────────────────────
 default_text_model = "MiniMax-M2.1"
-default_image_model = "image-01"
-default_video_model = "video-01"
-default_audio_model = "speech-01"
-default_music_model = "music-01"
+
+# Parsed but currently unused (reserved for future versions):
+# default_image_model = "image-01"
+# default_video_model = "video-01"
+# default_audio_model = "speech-01"
+# default_music_model = "music-01"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────────
-output_dir = "./outputs"
-tools_file = "./tools.json"
 skills_dir = "~/.minimax/skills"
 mcp_config_path = "~/.minimax/mcp.json"
 notes_path = "~/.minimax/notes.txt"
-memory_path = "~/.minimax/memory.md"
+
+# Parsed but currently unused (reserved for future versions):
+# output_dir = "./outputs"
+# tools_file = "./tools.json"
+# memory_path = "~/.minimax/memory.md"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Security
@@ -74,6 +80,7 @@ exponential_base = 2.0
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profile Example (for multiple environments)
 # ─────────────────────────────────────────────────────────────────────────────────
+# Select a profile with `minimax --profile <name>` or `MINIMAX_PROFILE=<name>`.
 [profiles.work]
 api_key = "WORK_MINIMAX_API_KEY"
 base_url = "https://api.minimax.io"
@@ -81,3 +88,17 @@ base_url = "https://api.minimax.io"
 [profiles.dev]
 api_key = "DEV_MINIMAX_API_KEY"
 allow_shell = true
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Hooks (optional)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Hooks run shell commands on lifecycle events (session start/end, tool calls, etc.).
+# Configure as `[[hooks.hooks]]` under a `[hooks]` table.
+#
+# [hooks]
+# enabled = true
+# default_timeout_secs = 30
+#
+# [[hooks.hooks]]
+# event = "session_start"
+# command = "echo 'MiniMax CLI session started'"

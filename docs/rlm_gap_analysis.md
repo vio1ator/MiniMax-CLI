@@ -154,7 +154,7 @@ pub fn chunk(&self, chunk_size: usize, overlap: usize) -> Vec<ChunkInfo> {
 **Current Code (src/rlm.rs):**
 ```rust
 pub struct RlmContext {
-    pub variables: HashMap<String, String>, // Field exists but unused!
+    pub variables: HashMap<String, String>,
     ...
 }
 ```

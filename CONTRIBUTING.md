@@ -6,7 +6,7 @@ Thank you for your interest in contributing to MiniMax CLI! This document provid
 
 ### Prerequisites
 
-- Rust 1.75 or later (we use edition 2024 features)
+- Rust 1.85 or later (edition 2024)
 - Cargo package manager
 - Git
 
@@ -90,7 +90,7 @@ src/
 
 ## Submitting Changes
 
-1. Create a feature branch from `master`:
+1. Create a feature branch from `main`:
    ```bash
    git checkout -b feat/your-feature
    ```
