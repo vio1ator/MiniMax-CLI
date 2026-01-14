@@ -33,7 +33,7 @@ fn normalize_load_path(raw: &str) -> Result<String, ToolError> {
                 "Path is required after '@' prefix",
             ));
         }
-        let stripped = stripped.trim_start_matches(|c| c == '/' || c == '\\');
+        let stripped = stripped.trim_start_matches(['/', '\\']);
         if stripped.is_empty() {
             return Err(ToolError::invalid_input(
                 "Path is required after '@' prefix",

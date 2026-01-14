@@ -994,11 +994,11 @@ impl Engine {
 
                 let mut approval_required = false;
                 let mut approval_description = "Tool execution requires approval".to_string();
-                if let Some(registry) = tool_registry {
-                    if let Some(spec) = registry.get(tool_name) {
-                        approval_required = spec.approval_level() != ApprovalLevel::Auto;
-                        approval_description = spec.description().to_string();
-                    }
+                if let Some(registry) = tool_registry
+                    && let Some(spec) = registry.get(tool_name)
+                {
+                    approval_required = spec.approval_level() != ApprovalLevel::Auto;
+                    approval_description = spec.description().to_string();
                 }
 
                 let result = if approval_required {

@@ -744,18 +744,28 @@ async fn run_event_loop(
                                     }
                                 }
                             }
-                        } else if app.mode == AppMode::Rlm && app.rlm_repl_active {
-                            handle_rlm_input(app, input);
                         } else {
-                            if app.mode == AppMode::Rlm {
-                                if let Some(path) = input.trim().strip_prefix('@') {
-                                    let command = format!("/load @{path}");
-                                    let result = commands::execute(&command, app);
-                                    if let Some(msg) = result.message {
-                                        app.add_message(HistoryCell::System { content: msg });
-                                    }
+                            if app.mode == AppMode::Rlm && app.rlm_repl_active {
+                                if rlm_repl_should_route_to_chat(app, &input) {
+                                    app.rlm_repl_active = false;
+                                    app.add_message(HistoryCell::System {
+                                        content: "RLM REPL paused (no context loaded). Routing to chat so the model can call rlm_load. Use /repl to return.".to_string(),
+                                    });
+                                } else {
+                                    handle_rlm_input(app, input);
                                     continue;
                                 }
+                            }
+
+                            if app.mode == AppMode::Rlm
+                                && let Some(path) = input.trim().strip_prefix('@')
+                            {
+                                let command = format!("/load @{path}");
+                                let result = commands::execute(&command, app);
+                                if let Some(msg) = result.message {
+                                    app.add_message(HistoryCell::System { content: msg });
+                                }
+                                continue;
                             }
 
                             let queued = if let Some(mut draft) = app.queued_draft.take() {
@@ -921,6 +931,51 @@ fn handle_rlm_input(app: &mut App, input: String) {
     app.add_message(HistoryCell::System { content });
 }
 
+fn looks_like_rlm_expr(input: &str) -> bool {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('/') {
+        return true;
+    }
+
+    let token = trimmed
+        .split(|c: char| c == '(' || c.is_whitespace())
+        .next()
+        .unwrap_or("");
+    matches!(
+        token,
+        "len"
+            | "line_count"
+            | "lines"
+            | "search"
+            | "chunk"
+            | "chunk_sections"
+            | "chunk_lines"
+            | "vars"
+            | "get"
+            | "set"
+            | "append"
+            | "del"
+            | "head"
+            | "tail"
+            | "peek"
+    )
+}
+
+fn rlm_repl_should_route_to_chat(app: &App, input: &str) -> bool {
+    let trimmed = input.trim();
+    if trimmed.is_empty() || looks_like_rlm_expr(trimmed) {
+        return false;
+    }
+
+    let Ok(session) = app.rlm_session.lock() else {
+        return false;
+    };
+    session.contexts.is_empty()
+}
+
 fn render(f: &mut Frame, app: &mut App) {
     let size = f.area();
 
@@ -941,7 +996,7 @@ fn render(f: &mut Frame, app: &mut App) {
     let status_lines = usize::from(app.is_loading);
     let status_height =
         u16::try_from(status_lines + queued_lines + editing_lines).unwrap_or(u16::MAX);
-    let prompt = prompt_for_mode(app.mode);
+    let prompt = prompt_for_mode(app.mode, app.rlm_repl_active);
     let composer_height = composer_height(
         &app.input,
         size.width,
@@ -1131,7 +1186,7 @@ fn render_status_indicator(f: &mut Frame, area: Rect, app: &App, queued: &[Strin
 }
 
 fn render_composer(f: &mut Frame, area: Rect, app: &mut App) {
-    let prompt = prompt_for_mode(app.mode);
+    let prompt = prompt_for_mode(app.mode, app.rlm_repl_active);
     let prompt_width = prompt.width();
     let prompt_width_u16 = u16::try_from(prompt_width).unwrap_or(u16::MAX);
     let content_width = usize::from(area.width.saturating_sub(prompt_width_u16).max(1));
@@ -1264,13 +1319,19 @@ fn mode_badge_style(mode: AppMode) -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-fn prompt_for_mode(mode: AppMode) -> &'static str {
+fn prompt_for_mode(mode: AppMode, rlm_repl_active: bool) -> &'static str {
     match mode {
         AppMode::Normal => "> ",
         AppMode::Agent => "agent> ",
         AppMode::Yolo => "yolo> ",
         AppMode::Plan => "plan> ",
-        AppMode::Rlm => "rlm> ",
+        AppMode::Rlm => {
+            if rlm_repl_active {
+                "rlm(repl)> "
+            } else {
+                "rlm> "
+            }
+        }
     }
 }
 
@@ -2613,6 +2674,9 @@ fn exec_is_background(input: &serde_json::Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
+    use crate::tui::app::TuiOptions;
+    use std::path::PathBuf;
 
     #[test]
     fn pad_lines_to_bottom_noop_when_already_filled() {
@@ -2693,5 +2757,54 @@ mod tests {
         .expect("point");
         assert_eq!(p1.line_index, 1);
         assert_eq!(p1.column, 0);
+    }
+
+    fn make_test_app() -> App {
+        let options = TuiOptions {
+            model: "test-model".to_string(),
+            workspace: PathBuf::from("."),
+            allow_shell: false,
+            max_subagents: 1,
+            skills_dir: PathBuf::from("."),
+            memory_path: PathBuf::from("memory.md"),
+            notes_path: PathBuf::from("notes.txt"),
+            mcp_config_path: PathBuf::from("mcp.json"),
+            use_memory: false,
+            start_in_agent_mode: false,
+            yolo: false,
+            resume_session_id: None,
+        };
+        App::new(options, &Config::default())
+    }
+
+    #[test]
+    fn looks_like_rlm_expr_detects_known_functions() {
+        assert!(looks_like_rlm_expr("lines(1, 10)"));
+        assert!(looks_like_rlm_expr("search(\"foo\")"));
+        assert!(looks_like_rlm_expr("vars()"));
+        assert!(!looks_like_rlm_expr("read the README"));
+    }
+
+    #[test]
+    fn rlm_repl_routes_to_chat_when_no_context_loaded() {
+        let app = make_test_app();
+        assert!(rlm_repl_should_route_to_chat(
+            &app,
+            "Please read the README"
+        ));
+        assert!(!rlm_repl_should_route_to_chat(&app, "lines(1, 5)"));
+    }
+
+    #[test]
+    fn rlm_repl_stays_in_repl_when_context_exists() {
+        let app = make_test_app();
+        {
+            let mut session = app.rlm_session.lock().expect("lock session");
+            session.load_context("ctx", "hello".to_string(), None);
+        }
+        assert!(!rlm_repl_should_route_to_chat(
+            &app,
+            "Please read the README"
+        ));
     }
 }
