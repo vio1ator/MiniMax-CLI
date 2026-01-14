@@ -1,8 +1,9 @@
 //! TUI event loop and rendering logic for `MiniMax` CLI.
 
 use std::fmt::Write;
+use std::fs;
 use std::io::{self, Stdout};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::Result;
@@ -56,6 +57,18 @@ const MINIMAX_RED: Color = Color::Rgb(220, 80, 80);
 const MINIMAX_CORAL: Color = Color::Rgb(240, 128, 100);
 const MINIMAX_ORANGE: Color = Color::Rgb(255, 165, 80);
 const MAX_QUEUED_PREVIEW: usize = 3;
+const AUTO_RLM_MIN_FILE_BYTES: u64 = 200_000;
+const AUTO_RLM_HINT_FILE_BYTES: u64 = 50_000;
+const AUTO_RLM_MAX_SCAN_ENTRIES: usize = 50_000;
+const AUTO_RLM_EXCLUDED_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    ".codex",
+    ".aleph",
+    "dist",
+    "build",
+];
 
 // ASCII logo for onboarding screen only
 const LOGO: &str = r"
@@ -862,6 +875,7 @@ async fn dispatch_user_message(
     message: QueuedMessage,
 ) -> Result<()> {
     let content = message.content();
+    maybe_auto_switch_to_rlm(app, &message.display);
     let rlm_summary = if app.mode == AppMode::Rlm {
         app.rlm_session
             .lock()
@@ -929,6 +943,236 @@ fn handle_rlm_input(app: &mut App, input: String) {
     };
 
     app.add_message(HistoryCell::System { content });
+}
+
+struct AutoRlmDecision {
+    path: Option<PathBuf>,
+    reason: String,
+}
+
+fn maybe_auto_switch_to_rlm(app: &mut App, input: &str) {
+    if app.mode == AppMode::Rlm {
+        return;
+    }
+
+    let Some(decision) = auto_rlm_decision(app, input) else {
+        return;
+    };
+
+    app.set_mode(AppMode::Rlm);
+    app.rlm_repl_active = false;
+
+    let mut messages = vec![format!("Auto-switched to RLM mode ({})", decision.reason)];
+
+    if let Some(path) = decision.path.as_ref() {
+        let load_command = format!("/load {}", format_load_path(app, path));
+        let result = commands::execute(&load_command, app);
+        if let Some(msg) = result.message {
+            messages.push(msg);
+        }
+    }
+
+    app.add_message(HistoryCell::System {
+        content: messages.join("\n"),
+    });
+}
+
+fn auto_rlm_decision(app: &App, input: &str) -> Option<AutoRlmDecision> {
+    let input_lower = input.to_lowercase();
+    let wants_largest_file = input_lower.contains("largest file")
+        || input_lower.contains("biggest file")
+        || input_lower.contains("largest files");
+    let explicit_rlm = input_lower
+        .split_whitespace()
+        .any(|word| word.trim_matches(|c: char| !c.is_ascii_alphanumeric()) == "rlm")
+        || input_lower.contains("rlm mode");
+    let has_hint = input_lower.contains("chunk")
+        || input_lower.contains("chunking")
+        || input_lower.contains("huge")
+        || input_lower.contains("massive")
+        || input_lower.contains("entire repo")
+        || input_lower.contains("whole repo")
+        || input_lower.contains("full repo")
+        || input_lower.contains("whole project")
+        || input_lower.contains("entire project")
+        || input_lower.contains("full project")
+        || explicit_rlm;
+
+    if wants_largest_file && let Some((path, size)) = find_largest_file(&app.workspace) {
+        return Some(AutoRlmDecision {
+            path: Some(path),
+            reason: format!("requested largest file ({} bytes)", size),
+        });
+    }
+
+    let Some(candidate) = detect_requested_file(input, &app.workspace) else {
+        if explicit_rlm {
+            return Some(AutoRlmDecision {
+                path: None,
+                reason: "explicit RLM request".to_string(),
+            });
+        }
+        return None;
+    };
+    if !app.trust_mode {
+        let workspace_root = app
+            .workspace
+            .canonicalize()
+            .unwrap_or_else(|_| app.workspace.clone());
+        let candidate_canonical = candidate
+            .canonicalize()
+            .unwrap_or_else(|_| candidate.clone());
+        if !candidate_canonical.starts_with(&workspace_root) {
+            return None;
+        }
+    }
+    let metadata = fs::metadata(&candidate).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+
+    let size = metadata.len();
+    let min_bytes = if has_hint {
+        AUTO_RLM_HINT_FILE_BYTES
+    } else {
+        AUTO_RLM_MIN_FILE_BYTES
+    };
+    if size < min_bytes {
+        return None;
+    }
+
+    Some(AutoRlmDecision {
+        path: Some(candidate),
+        reason: format!("large file ({} bytes)", size),
+    })
+}
+
+fn detect_requested_file(input: &str, workspace: &Path) -> Option<PathBuf> {
+    if input.to_lowercase().contains("readme") {
+        let readme = ["README.md", "README", "README.txt"];
+        for name in readme {
+            let candidate = workspace.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    for token in input.split_whitespace() {
+        let token = trim_token(token);
+        if token.is_empty() || token.contains("://") {
+            continue;
+        }
+        if !looks_like_path_token(token) {
+            continue;
+        }
+        if let Some(path) = resolve_candidate_path(token, workspace) {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn trim_token(token: &str) -> &str {
+    token
+        .trim_start_matches(['(', '[', '{', '"', '\'', '`'])
+        .trim_end_matches([')', ']', '}', ',', ';', ':', '"', '\'', '`', '.'])
+}
+
+fn looks_like_path_token(token: &str) -> bool {
+    let lower = token.to_lowercase();
+    if lower == "readme" || lower == "readme.md" {
+        return true;
+    }
+    if token.starts_with('@') || token.contains('/') || token.contains('\\') {
+        return true;
+    }
+    matches!(
+        token.rsplit('.').next(),
+        Some(
+            "md" | "txt"
+                | "rs"
+                | "toml"
+                | "json"
+                | "yaml"
+                | "yml"
+                | "py"
+                | "js"
+                | "ts"
+                | "tsx"
+                | "jsx"
+                | "go"
+                | "java"
+                | "c"
+                | "h"
+                | "cpp"
+                | "log"
+        )
+    )
+}
+
+fn resolve_candidate_path(token: &str, workspace: &Path) -> Option<PathBuf> {
+    let candidate = if let Some(stripped) = token.strip_prefix('@') {
+        workspace.join(stripped.trim_start_matches(['/', '\\']))
+    } else if Path::new(token).is_absolute() {
+        PathBuf::from(token)
+    } else {
+        workspace.join(token)
+    };
+
+    if candidate.is_file() {
+        return Some(candidate);
+    }
+    None
+}
+
+fn find_largest_file(workspace: &Path) -> Option<(PathBuf, u64)> {
+    let mut stack = vec![workspace.to_path_buf()];
+    let mut scanned = 0;
+    let mut largest: Option<(PathBuf, u64)> = None;
+
+    while let Some(dir) = stack.pop() {
+        if scanned >= AUTO_RLM_MAX_SCAN_ENTRIES {
+            break;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            scanned += 1;
+            if scanned >= AUTO_RLM_MAX_SCAN_ENTRIES {
+                break;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|s| s.to_str())
+                    && AUTO_RLM_EXCLUDED_DIRS.contains(&name)
+                {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.is_file() {
+                let Ok(metadata) = entry.metadata() else {
+                    continue;
+                };
+                let size = metadata.len();
+                match largest {
+                    Some((_, current)) if size <= current => {}
+                    _ => largest = Some((path, size)),
+                }
+            }
+        }
+    }
+
+    largest
+}
+
+fn format_load_path(app: &App, path: &Path) -> String {
+    if let Ok(stripped) = path.strip_prefix(&app.workspace) {
+        return format!("@{}", stripped.display());
+    }
+    path.display().to_string()
 }
 
 fn looks_like_rlm_expr(input: &str) -> bool {
@@ -2676,7 +2920,9 @@ mod tests {
     use super::*;
     use crate::config::Config;
     use crate::tui::app::TuiOptions;
+    use std::fs;
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn pad_lines_to_bottom_noop_when_already_filled() {
@@ -2759,10 +3005,10 @@ mod tests {
         assert_eq!(p1.column, 0);
     }
 
-    fn make_test_app() -> App {
+    fn make_test_app_with_workspace(workspace: PathBuf) -> App {
         let options = TuiOptions {
             model: "test-model".to_string(),
-            workspace: PathBuf::from("."),
+            workspace,
             allow_shell: false,
             max_subagents: 1,
             skills_dir: PathBuf::from("."),
@@ -2787,7 +3033,7 @@ mod tests {
 
     #[test]
     fn rlm_repl_routes_to_chat_when_no_context_loaded() {
-        let app = make_test_app();
+        let app = make_test_app_with_workspace(PathBuf::from("."));
         assert!(rlm_repl_should_route_to_chat(
             &app,
             "Please read the README"
@@ -2797,7 +3043,7 @@ mod tests {
 
     #[test]
     fn rlm_repl_stays_in_repl_when_context_exists() {
-        let app = make_test_app();
+        let app = make_test_app_with_workspace(PathBuf::from("."));
         {
             let mut session = app.rlm_session.lock().expect("lock session");
             session.load_context("ctx", "hello".to_string(), None);
@@ -2806,5 +3052,38 @@ mod tests {
             &app,
             "Please read the README"
         ));
+    }
+
+    #[test]
+    fn auto_rlm_detects_large_file() {
+        let tmp = tempdir().expect("tempdir");
+        let big = tmp.path().join("big.txt");
+        let content = vec![b'a'; (AUTO_RLM_MIN_FILE_BYTES + 1) as usize];
+        fs::write(&big, content).expect("write");
+
+        let app = make_test_app_with_workspace(tmp.path().to_path_buf());
+        let decision = auto_rlm_decision(&app, "analyze big.txt").expect("decision");
+        assert_eq!(decision.path, Some(big));
+    }
+
+    #[test]
+    fn auto_rlm_uses_largest_file_hint() {
+        let tmp = tempdir().expect("tempdir");
+        let small = tmp.path().join("small.txt");
+        let big = tmp.path().join("bigger.txt");
+        fs::write(&small, b"tiny").expect("write");
+        fs::write(&big, b"this is larger").expect("write");
+
+        let app = make_test_app_with_workspace(tmp.path().to_path_buf());
+        let decision = auto_rlm_decision(&app, "analyze the largest file").expect("decision");
+        assert_eq!(decision.path, Some(big));
+    }
+
+    #[test]
+    fn auto_rlm_triggers_on_explicit_request() {
+        let tmp = tempdir().expect("tempdir");
+        let app = make_test_app_with_workspace(tmp.path().to_path_buf());
+        let decision = auto_rlm_decision(&app, "use rlm mode").expect("decision");
+        assert!(decision.path.is_none());
     }
 }

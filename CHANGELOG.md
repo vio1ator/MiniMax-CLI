@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-01-14
+
 ### Added
 - RLM prompt with external-context guidance and REPL tooling
 - RLM tools for context loading, execution, status, and sub-queries (rlm_load, rlm_exec, rlm_status, rlm_query)
 - RLM query usage tracking and variable buffers
 - Workspace-relative `@path` support for RLM loads
+- Auto-switch to RLM when users request large file analysis (or the largest file)
 
 ### Changed
 - Removed Edit mode; RLM chat is default with /repl toggle
@@ -30,5 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hooks system and config profiles
 - Example skills and launch assets
 
-[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.0...v0.1.5
 [0.1.0]: https://github.com/Hmbown/MiniMax-CLI/releases/tag/v0.1.0

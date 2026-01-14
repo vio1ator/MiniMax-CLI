@@ -22,6 +22,7 @@ The following RLM gaps have been addressed in Sprint 2:
 - **REPL toggle** (`/repl`) with RLM chat default
 - **LLM-managed context loading** (`rlm_load`, plus `/load @path` workspace support)
 - **RLM session status** (`rlm_status` for context + usage summaries)
+- **Auto-RLM switching** for large file requests (keeps small-context queries in base mode per paper tradeoff)
 
 Remaining opportunities (low priority): deeper recursive sub-agent loops and more model-specific prompt tuning.
 
