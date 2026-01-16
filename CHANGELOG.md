@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-01-16
+
+### Added
+- Renderable widget abstraction and modal view stack for TUI composition
+- Parallel tool execution with lock-aware scheduling
+- Interactive shell mode with terminal pause/resume handling
+
+### Changed
+- Tool approval requirements moved into tool specs
+- Tool results are recorded in original request order
+
+## [0.1.7] - 2026-01-15
+
+### Added
+- Duo mode (player-coach autocoding workflow)
+- Character-level transcript selection
+
+### Fixed
+- Approval flow tool use ID routing
+- Cursor position sync for transcript selection
+
 ## [0.1.6] - 2026-01-14
 
 ### Added
@@ -43,7 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hooks system and config profiles
 - Example skills and launch assets
 
-[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.1.0...v0.1.5
 [0.1.0]: https://github.com/Hmbown/MiniMax-CLI/releases/tag/v0.1.0
