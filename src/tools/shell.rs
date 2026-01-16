@@ -236,6 +236,36 @@ impl ShellManager {
         }
     }
 
+    /// Execute a shell command interactively (stdin/stdout/stderr inherit from terminal).
+    pub fn execute_interactive(
+        &mut self,
+        command: &str,
+        working_dir: Option<&str>,
+        timeout_ms: u64,
+    ) -> Result<ShellResult> {
+        self.execute_interactive_with_policy(command, working_dir, timeout_ms, None)
+    }
+
+    /// Execute a shell command interactively with a specific sandbox policy override.
+    pub fn execute_interactive_with_policy(
+        &mut self,
+        command: &str,
+        working_dir: Option<&str>,
+        timeout_ms: u64,
+        policy_override: Option<ExecutionSandboxPolicy>,
+    ) -> Result<ShellResult> {
+        let work_dir = working_dir.map_or_else(|| self.default_workspace.clone(), PathBuf::from);
+
+        let timeout_ms = timeout_ms.clamp(1000, 600_000);
+        let policy = policy_override.unwrap_or_else(|| self.sandbox_policy.clone());
+
+        let spec = CommandSpec::shell(command, work_dir.clone(), Duration::from_millis(timeout_ms))
+            .with_policy(policy);
+        let exec_env = self.sandbox_manager.prepare(&spec);
+
+        Self::execute_interactive_sandboxed(command, &work_dir, timeout_ms, &exec_env)
+    }
+
     /// Execute command synchronously with timeout (sandboxed).
     fn execute_sync_sandboxed(
         original_command: &str,
@@ -327,6 +357,78 @@ impl ShellManager {
                 exit_code: status.and_then(|s| s.code()),
                 stdout: truncate_output(&String::from_utf8_lossy(&stdout)),
                 stderr: truncate_output(&String::from_utf8_lossy(&stderr)),
+                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                sandboxed,
+                sandbox_type: if sandboxed {
+                    Some(sandbox_type.to_string())
+                } else {
+                    None
+                },
+                sandbox_denied: false,
+            })
+        }
+    }
+
+    /// Execute command interactively with timeout (sandboxed).
+    fn execute_interactive_sandboxed(
+        original_command: &str,
+        working_dir: &std::path::Path,
+        timeout_ms: u64,
+        exec_env: &ExecEnv,
+    ) -> Result<ShellResult> {
+        let started = Instant::now();
+        let timeout = Duration::from_millis(timeout_ms);
+        let sandbox_type = exec_env.sandbox_type;
+        let sandboxed = exec_env.is_sandboxed();
+
+        let program = exec_env.program();
+        let args = exec_env.args();
+
+        let mut cmd = Command::new(program);
+        cmd.args(args)
+            .current_dir(working_dir)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+
+        for (key, value) in &exec_env.env {
+            cmd.env(key, value);
+        }
+
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("Failed to execute: {original_command}"))?;
+
+        if let Some(status) = child.wait_timeout(timeout)? {
+            Ok(ShellResult {
+                task_id: None,
+                status: if status.success() {
+                    ShellStatus::Completed
+                } else {
+                    ShellStatus::Failed
+                },
+                exit_code: status.code(),
+                stdout: String::new(),
+                stderr: String::new(),
+                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                sandboxed,
+                sandbox_type: if sandboxed {
+                    Some(sandbox_type.to_string())
+                } else {
+                    None
+                },
+                sandbox_denied: false,
+            })
+        } else {
+            let _ = child.kill();
+            let status = child.wait().ok();
+
+            Ok(ShellResult {
+                task_id: None,
+                status: ShellStatus::TimedOut,
+                exit_code: status.and_then(|s| s.code()),
+                stdout: String::new(),
+                stderr: String::new(),
                 duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 sandboxed,
                 sandbox_type: if sandboxed {
@@ -532,8 +634,8 @@ pub fn new_shared_shell_manager_with_sandbox(
 
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
-    optional_u64, required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_bool, optional_u64, required_str,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -566,6 +668,10 @@ impl ToolSpec for ExecShellTool {
                 "background": {
                     "type": "boolean",
                     "description": "Run in background and return task_id (default: false)"
+                },
+                "interactive": {
+                    "type": "boolean",
+                    "description": "Run interactively with terminal IO (default: false)"
                 }
             },
             "required": ["command"]
@@ -580,8 +686,8 @@ impl ToolSpec for ExecShellTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Required
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
     }
 
     async fn execute(
@@ -592,6 +698,13 @@ impl ToolSpec for ExecShellTool {
         let command = required_str(&input, "command")?;
         let timeout_ms = optional_u64(&input, "timeout_ms", 120_000).min(600_000);
         let background = optional_bool(&input, "background", false);
+        let interactive = optional_bool(&input, "interactive", false);
+
+        if interactive && background {
+            return Ok(ToolResult::error(
+                "Interactive commands cannot run in background mode.",
+            ));
+        }
 
         // Safety analysis before execution
         let safety = analyze_command(command);
@@ -624,10 +737,21 @@ impl ToolSpec for ExecShellTool {
         // Create a shell manager for this execution
         let mut manager = ShellManager::new(context.workspace.clone());
 
-        match manager.execute(command, None, timeout_ms, background) {
+        let result = if interactive {
+            manager.execute_interactive(command, None, timeout_ms)
+        } else {
+            manager.execute(command, None, timeout_ms, background)
+        };
+
+        match result {
             Ok(result) => {
                 let task_id_str = result.task_id.clone().unwrap_or_default();
-                let output = if result.status == ShellStatus::Completed {
+                let output = if interactive {
+                    format!(
+                        "Interactive command completed (exit code: {:?})",
+                        result.exit_code
+                    )
+                } else if result.status == ShellStatus::Completed {
                     if result.stdout.is_empty() && result.stderr.is_empty() {
                         "(no output)".to_string()
                     } else if result.stderr.is_empty() {
@@ -655,6 +779,7 @@ impl ToolSpec for ExecShellTool {
                         "sandboxed": result.sandboxed,
                         "task_id": result.task_id,
                         "safety_level": format!("{:?}", safety.level),
+                        "interactive": interactive,
                     })),
                 })
             }
@@ -693,8 +818,8 @@ impl ToolSpec for NoteTool {
         vec![ToolCapability::WritesFiles]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto // Notes are low-risk
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto // Notes are low-risk
     }
 
     async fn execute(

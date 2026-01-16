@@ -86,6 +86,10 @@ impl ToolSpec for GrepFilesTool {
         vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
     }
 
+    fn supports_parallel(&self) -> bool {
+        true
+    }
+
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let pattern_str = required_str(&input, "pattern")?;
         let path_str = optional_str(&input, "path").unwrap_or(".");
@@ -388,7 +392,7 @@ mod tests {
     use serde_json::{Value, json};
     use tempfile::tempdir;
 
-    use crate::tools::spec::{ApprovalLevel, ToolContext, ToolSpec};
+    use crate::tools::spec::{ApprovalRequirement, ToolContext, ToolSpec};
 
     use super::{GrepFilesTool, matches_glob};
 
@@ -536,6 +540,12 @@ mod tests {
         assert_eq!(tool.name(), "grep_files");
         assert!(tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+
+    #[test]
+    fn test_parallel_support_flags() {
+        let tool = GrepFilesTool;
+        assert!(tool.supports_parallel());
     }
 }

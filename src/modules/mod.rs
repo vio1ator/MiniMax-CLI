@@ -7,7 +7,7 @@
 //! - Music generation
 //!
 //! Currently these are standalone functions that can be called directly.
-//! Future work: Convert to agent tools with `ApprovalLevel::Required`.
+//! Future work: Convert to agent tools with `ApprovalRequirement::Required`.
 
 #![allow(dead_code)] // Public API - multimedia functions for future tool integration
 

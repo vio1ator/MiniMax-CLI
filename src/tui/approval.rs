@@ -4,16 +4,10 @@
 //! executing tools that may have costs or side effects.
 
 use crate::pricing::CostEstimate;
-use crate::tui::app::AppMode;
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
-};
+use crate::tui::views::{ModalKind, ModalView, ViewAction, ViewEvent};
+use crate::tui::widgets::{ApprovalWidget, Renderable};
+use crossterm::event::{KeyCode, KeyEvent};
 use serde_json::Value;
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 /// Determines when tool executions require user approval
@@ -135,86 +129,34 @@ pub fn get_tool_category(name: &str) -> ToolCategory {
     }
 }
 
-/// Check if a tool requires approval in the given mode
-pub fn requires_approval(
-    app_mode: AppMode,
-    tool_name: &str,
-    approval_mode: ApprovalMode,
-    session_approved: &HashSet<String>,
-) -> bool {
-    if session_approved.contains(tool_name) {
-        return false;
-    }
-
-    let category = get_tool_category(tool_name);
-    match approval_mode {
-        ApprovalMode::Auto => false,
-        ApprovalMode::Never => category != ToolCategory::Safe,
-        ApprovalMode::Suggest => mode_requires_approval(app_mode, category),
-    }
+/// Approval overlay state managed by the modal view stack
+#[derive(Debug, Clone)]
+pub struct ApprovalView {
+    request: ApprovalRequest,
+    selected: usize,
+    timeout: Option<Duration>,
+    requested_at: Instant,
 }
 
-fn mode_requires_approval(mode: AppMode, category: ToolCategory) -> bool {
-    match mode {
-        AppMode::Yolo | AppMode::Rlm | AppMode::Duo => false,
-        AppMode::Agent => matches!(category, ToolCategory::Shell | ToolCategory::PaidMultimedia),
-        AppMode::Normal | AppMode::Plan => matches!(
-            category,
-            ToolCategory::FileWrite | ToolCategory::Shell | ToolCategory::PaidMultimedia
-        ),
-    }
-}
-
-/// Approval overlay state held in App
-#[derive(Debug, Clone, Default)]
-pub struct ApprovalState {
-    /// Pending approval request
-    pub pending: Option<ApprovalRequest>,
-    /// Currently visible
-    pub visible: bool,
-    /// Selected option index (0-3)
-    pub selected: usize,
-    /// Optional timeout for approval requests
-    pub timeout: Option<Duration>,
-    /// When the current approval request started
-    pub requested_at: Option<Instant>,
-    /// Tools approved for this session
-    pub session_approved: HashSet<String>,
-}
-
-impl ApprovalState {
-    pub fn new() -> Self {
-        Self::default()
+impl ApprovalView {
+    pub fn new(request: ApprovalRequest) -> Self {
+        Self {
+            request,
+            selected: 0,
+            timeout: None,
+            requested_at: Instant::now(),
+        }
     }
 
-    /// Show approval overlay for a request
-    pub fn request(&mut self, req: ApprovalRequest) {
-        self.pending = Some(req);
-        self.visible = true;
-        self.selected = 0;
-        self.requested_at = Some(Instant::now());
-    }
-
-    /// Clear the overlay
-    pub fn clear(&mut self) {
-        self.pending = None;
-        self.visible = false;
-        self.selected = 0;
-        self.requested_at = None;
-    }
-
-    /// Navigate selection up
-    pub fn select_prev(&mut self) {
+    fn select_prev(&mut self) {
         self.selected = self.selected.saturating_sub(1);
     }
 
-    /// Navigate selection down
-    pub fn select_next(&mut self) {
+    fn select_next(&mut self) {
         self.selected = (self.selected + 1).min(3);
     }
 
-    /// Get the decision for the current selection
-    pub fn current_decision(&self) -> ReviewDecision {
+    fn current_decision(&self) -> ReviewDecision {
         match self.selected {
             0 => ReviewDecision::Approved,
             1 => ReviewDecision::ApprovedForSession,
@@ -223,155 +165,58 @@ impl ApprovalState {
         }
     }
 
-    /// Apply a decision and return (tool_use_id, decision)
-    pub fn apply_decision(&mut self, decision: ReviewDecision) -> Option<(String, ReviewDecision)> {
-        let req = self.pending.take()?;
-        let tool_use_id = req.id.clone();
-
-        if decision == ReviewDecision::ApprovedForSession {
-            self.session_approved.insert(req.tool_name.clone());
-        }
-
-        self.visible = false;
-        self.selected = 0;
-        self.requested_at = None;
-
-        Some((tool_use_id, decision))
+    fn emit_decision(&self, decision: ReviewDecision, timed_out: bool) -> ViewAction {
+        ViewAction::EmitAndClose(ViewEvent::ApprovalDecision {
+            tool_id: self.request.id.clone(),
+            tool_name: self.request.tool_name.clone(),
+            decision,
+            timed_out,
+        })
     }
 
-    pub fn is_timed_out(&self) -> bool {
-        match (self.requested_at, self.timeout) {
-            (Some(start), Some(timeout)) => start.elapsed() >= timeout,
-            _ => false,
+    fn is_timed_out(&self) -> bool {
+        match self.timeout {
+            Some(timeout) => self.requested_at.elapsed() >= timeout,
+            None => false,
         }
     }
 }
 
-/// Render the approval overlay
-pub fn render_approval_overlay(f: &mut Frame, state: &ApprovalState) {
-    let Some(request) = &state.pending else {
-        return;
-    };
-
-    let area = f.area();
-
-    // Calculate popup dimensions
-    let popup_width = 65.min(area.width.saturating_sub(4));
-    let popup_height = 18.min(area.height.saturating_sub(4));
-    let popup_area = Rect {
-        x: (area.width.saturating_sub(popup_width)) / 2,
-        y: (area.height.saturating_sub(popup_height)) / 2,
-        width: popup_width,
-        height: popup_height,
-    };
-
-    // Clear background
-    f.render_widget(Clear, popup_area);
-
-    // Build content lines
-    let mut lines = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::raw("  Tool: "),
-            Span::styled(
-                &request.tool_name,
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
-
-    // Category indicator
-    let category_label = match request.category {
-        ToolCategory::Safe => ("Safe", Color::Green),
-        ToolCategory::FileWrite => ("File Write", Color::Yellow),
-        ToolCategory::Shell => ("Shell Command", Color::Red),
-        ToolCategory::PaidMultimedia => ("Paid API", Color::Magenta),
-    };
-    lines.push(Line::from(vec![
-        Span::raw("  Type: "),
-        Span::styled(
-            category_label.0,
-            Style::default()
-                .fg(category_label.1)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
-
-    // Cost estimate
-    if let Some(cost) = &request.estimated_cost {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  Cost: "),
-            Span::styled(
-                cost.display(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::from(Span::styled(
-            format!("  {}", &cost.breakdown),
-            Style::default().fg(Color::DarkGray),
-        )));
-    } else {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  No cost (free operation)",
-            Style::default().fg(Color::DarkGray),
-        )));
+impl ModalView for ApprovalView {
+    fn kind(&self) -> ModalKind {
+        ModalKind::Approval
     }
 
-    // Parameters (truncated)
-    lines.push(Line::from(""));
-    let params_str = request.params_display();
-    let params_truncated = crate::utils::truncate_with_ellipsis(&params_str, 50, "...");
-    lines.push(Line::from(Span::styled(
-        format!("  Params: {params_truncated}"),
-        Style::default().fg(Color::DarkGray),
-    )));
-
-    // Divider
-    lines.push(Line::from(""));
-
-    // Options
-    let options = [
-        ("y", "Approve (this time)"),
-        ("a", "Approve for session"),
-        ("n", "Deny"),
-        ("Esc", "Abort turn"),
-    ];
-
-    for (i, (key, label)) in options.iter().enumerate() {
-        let is_selected = i == state.selected;
-        let style = if is_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::REVERSED)
-        } else {
-            Style::default()
-        };
-
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(format!("[{key}] "), Style::default().fg(Color::Green)),
-            Span::styled(*label, style),
-        ]));
+    fn handle_key(&mut self, key: KeyEvent) -> ViewAction {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.select_prev();
+                ViewAction::None
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.select_next();
+                ViewAction::None
+            }
+            KeyCode::Enter => self.emit_decision(self.current_decision(), false),
+            KeyCode::Char('y') => self.emit_decision(ReviewDecision::Approved, false),
+            KeyCode::Char('a') => self.emit_decision(ReviewDecision::ApprovedForSession, false),
+            KeyCode::Char('n') => self.emit_decision(ReviewDecision::Denied, false),
+            KeyCode::Esc => self.emit_decision(ReviewDecision::Abort, false),
+            _ => ViewAction::None,
+        }
     }
 
-    // Build block and paragraph
-    let title = format!(" Approve Tool: {} ", &request.tool_name);
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+    fn render(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        let approval_widget = ApprovalWidget::new(&self.request, self.selected);
+        approval_widget.render(area, buf);
+    }
 
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false });
-
-    f.render_widget(paragraph, popup_area);
+    fn tick(&mut self) -> ViewAction {
+        if self.is_timed_out() {
+            return self.emit_decision(ReviewDecision::Denied, true);
+        }
+        ViewAction::None
+    }
 }
 
 fn truncate_params_value(value: &Value, max_len: usize) -> Value {

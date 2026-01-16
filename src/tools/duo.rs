@@ -7,8 +7,8 @@ use crate::duo::{
     DuoPhase, SharedDuoSession, generate_coach_prompt, generate_player_prompt, session_summary,
 };
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_str, required_str,
 };
 
 /// Initialize an autocoding session with requirements.
@@ -62,8 +62,8 @@ impl ToolSpec for DuoInitTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -133,8 +133,8 @@ impl ToolSpec for DuoPlayerTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -213,8 +213,8 @@ impl ToolSpec for DuoCoachTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -294,8 +294,8 @@ impl ToolSpec for DuoAdvanceTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -384,8 +384,8 @@ impl ToolSpec for DuoStatusTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -413,7 +413,7 @@ mod tests {
         let tool = DuoInitTool::new(session);
 
         assert_eq!(tool.name(), "duo_init");
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
 
         let schema = tool.input_schema();
         assert!(schema.get("properties").is_some());
@@ -431,7 +431,7 @@ mod tests {
         let tool = DuoPlayerTool::new(session);
 
         assert_eq!(tool.name(), "duo_player");
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
     }
 
     #[test]
@@ -440,7 +440,7 @@ mod tests {
         let tool = DuoCoachTool::new(session);
 
         assert_eq!(tool.name(), "duo_coach");
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
     }
 
     #[test]
@@ -449,7 +449,7 @@ mod tests {
         let tool = DuoAdvanceTool::new(session);
 
         assert_eq!(tool.name(), "duo_advance");
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
 
         let schema = tool.input_schema();
         let required = schema["required"].as_array().unwrap();
@@ -463,6 +463,6 @@ mod tests {
         let tool = DuoStatusTool::new(session);
 
         assert_eq!(tool.name(), "duo_status");
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
     }
 }

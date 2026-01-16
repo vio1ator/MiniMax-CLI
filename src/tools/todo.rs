@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
 
 // === Types ===
@@ -308,8 +308,8 @@ impl ToolSpec for TodoAddTool {
         vec![ToolCapability::WritesFiles]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -387,8 +387,8 @@ impl ToolSpec for TodoUpdateTool {
         vec![ToolCapability::WritesFiles]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -459,8 +459,8 @@ impl ToolSpec for TodoListTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -525,8 +525,8 @@ impl ToolSpec for TodoWriteTool {
         vec![ToolCapability::WritesFiles]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(

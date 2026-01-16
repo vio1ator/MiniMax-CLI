@@ -14,6 +14,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 use serde_json::json;
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
@@ -28,7 +29,7 @@ use crate::models::{
 use crate::prompts;
 use crate::rlm::{RlmSession, SharedRlmSession, session_summary as rlm_session_summary};
 use crate::tools::plan::PlanState;
-use crate::tools::spec::{ApprovalLevel, ToolError, ToolResult};
+use crate::tools::spec::{ApprovalRequirement, ToolError, ToolResult};
 use crate::tools::subagent::{
     SharedSubAgentManager, SubAgentRuntime, SubAgentType, new_shared_subagent_manager,
 };
@@ -148,6 +149,7 @@ pub struct Engine {
     rx_approval: mpsc::Receiver<ApprovalDecision>,
     tx_event: mpsc::Sender<Event>,
     cancel_token: CancellationToken,
+    tool_exec_lock: Arc<RwLock<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -171,6 +173,21 @@ struct ToolUseState {
     name: String,
     input: serde_json::Value,
     input_buffer: String,
+}
+
+struct ToolExecOutcome {
+    index: usize,
+    id: String,
+    name: String,
+    input: serde_json::Value,
+    started_at: Instant,
+    result: Result<ToolResult, ToolError>,
+}
+
+// Hold the lock guard for the duration of a tool execution.
+enum ToolExecGuard<'a> {
+    Read(tokio::sync::RwLockReadGuard<'a, ()>),
+    Write(tokio::sync::RwLockWriteGuard<'a, ()>),
 }
 
 const TOOL_CALL_START_MARKERS: [&str; 5] = [
@@ -295,6 +312,7 @@ impl Engine {
         let (tx_event, rx_event) = mpsc::channel(256);
         let (tx_approval, rx_approval) = mpsc::channel(64);
         let cancel_token = CancellationToken::new();
+        let tool_exec_lock = Arc::new(RwLock::new(()));
 
         // Create clients for both providers
         let (anthropic_client, anthropic_client_error) = match AnthropicClient::new(api_config) {
@@ -334,6 +352,7 @@ impl Engine {
             rx_approval,
             tx_event,
             cancel_token: cancel_token.clone(),
+            tool_exec_lock,
         };
 
         let handle = EngineHandle {
@@ -689,6 +708,14 @@ impl Engine {
         input: serde_json::Value,
     ) -> Result<ToolResult, ToolError> {
         let pool = self.ensure_mcp_pool().await?;
+        Self::execute_mcp_tool_with_pool(pool, name, input).await
+    }
+
+    async fn execute_mcp_tool_with_pool(
+        pool: Arc<AsyncMutex<McpPool>>,
+        name: &str,
+        input: serde_json::Value,
+    ) -> Result<ToolResult, ToolError> {
         let mut pool = pool.lock().await;
         let result = pool
             .call_tool(name, input)
@@ -696,6 +723,50 @@ impl Engine {
             .map_err(|e| ToolError::execution_failed(format!("MCP tool failed: {e}")))?;
         let content = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
         Ok(ToolResult::success(content))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_tool_with_lock(
+        lock: Arc<RwLock<()>>,
+        supports_parallel: bool,
+        interactive: bool,
+        tx_event: mpsc::Sender<Event>,
+        tool_name: String,
+        tool_input: serde_json::Value,
+        registry: Option<&crate::tools::ToolRegistry>,
+        mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
+    ) -> Result<ToolResult, ToolError> {
+        let _guard = if supports_parallel {
+            ToolExecGuard::Read(lock.read().await)
+        } else {
+            ToolExecGuard::Write(lock.write().await)
+        };
+
+        if interactive {
+            let _ = tx_event.send(Event::PauseEvents).await;
+        }
+
+        let result = if McpPool::is_mcp_tool(&tool_name) {
+            if let Some(pool) = mcp_pool {
+                Engine::execute_mcp_tool_with_pool(pool, &tool_name, tool_input).await
+            } else {
+                Err(ToolError::not_available(format!(
+                    "tool '{tool_name}' is not registered"
+                )))
+            }
+        } else if let Some(registry) = registry {
+            registry.execute_full(&tool_name, tool_input).await
+        } else {
+            Err(ToolError::not_available(format!(
+                "tool '{tool_name}' is not registered"
+            )))
+        };
+
+        if interactive {
+            let _ = tx_event.send(Event::ResumeEvents).await;
+        }
+
+        result
     }
 
     async fn await_tool_approval(&mut self, tool_id: &str) -> Result<bool, ToolError> {
@@ -1007,22 +1078,48 @@ impl Engine {
             }
 
             // Execute tools
-            for tool in &tool_uses {
-                let tool_id = &tool.id;
-                let tool_name = &tool.name;
+            let tool_exec_lock = self.tool_exec_lock.clone();
+            let mcp_pool = if tool_uses
+                .iter()
+                .any(|tool| McpPool::is_mcp_tool(&tool.name))
+            {
+                match self.ensure_mcp_pool().await {
+                    Ok(pool) => Some(pool),
+                    Err(err) => {
+                        let _ = self.tx_event.send(Event::status(err.to_string())).await;
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            let mut tool_tasks = FuturesUnordered::new();
+            let mut outcomes: Vec<Option<ToolExecOutcome>> = Vec::with_capacity(tool_uses.len());
+            outcomes.resize_with(tool_uses.len(), || None);
+
+            for (index, tool) in tool_uses.iter().enumerate() {
+                let tool_id = tool.id.clone();
+                let tool_name = tool.name.clone();
                 let tool_input = tool.input.clone();
-                let start = Instant::now();
+                let interactive = tool_name == "exec_shell"
+                    && tool_input
+                        .get("interactive")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true);
 
                 let mut approval_required = false;
                 let mut approval_description = "Tool execution requires approval".to_string();
+                let mut supports_parallel = McpPool::is_mcp_tool(&tool_name);
                 if let Some(registry) = tool_registry
-                    && let Some(spec) = registry.get(tool_name)
+                    && let Some(spec) = registry.get(&tool_name)
                 {
-                    approval_required = spec.approval_level() != ApprovalLevel::Auto;
+                    approval_required = spec.approval_requirement() != ApprovalRequirement::Auto;
                     approval_description = spec.description().to_string();
+                    supports_parallel = spec.supports_parallel();
                 }
 
-                let result = if approval_required {
+                let result_override = if approval_required {
                     let _ = self
                         .tx_event
                         .send(Event::ApprovalRequired {
@@ -1032,53 +1129,125 @@ impl Engine {
                         })
                         .await;
 
-                    match self.await_tool_approval(tool_id).await {
-                        Ok(true) => {
-                            if McpPool::is_mcp_tool(tool_name) {
-                                self.execute_mcp_tool(tool_name, tool_input.clone()).await
-                            } else if let Some(registry) = tool_registry {
-                                registry.execute_full(tool_name, tool_input.clone()).await
-                            } else {
-                                Err(ToolError::not_available(format!(
-                                    "tool '{tool_name}' is not registered"
-                                )))
-                            }
-                        }
-                        Ok(false) => Err(ToolError::permission_denied(format!(
+                    match self.await_tool_approval(&tool_id).await {
+                        Ok(true) => None,
+                        Ok(false) => Some(Err(ToolError::permission_denied(format!(
                             "Tool '{tool_name}' denied by user"
-                        ))),
-                        Err(err) => Err(err),
+                        )))),
+                        Err(err) => Some(Err(err)),
                     }
-                } else if McpPool::is_mcp_tool(tool_name) {
-                    self.execute_mcp_tool(tool_name, tool_input.clone()).await
-                } else if let Some(registry) = tool_registry {
-                    registry.execute_full(tool_name, tool_input.clone()).await
                 } else {
-                    Err(ToolError::not_available(format!(
-                        "tool '{tool_name}' is not registered"
-                    )))
+                    None
                 };
-                let duration = start.elapsed();
 
+                let registry = tool_registry;
+                let lock = tool_exec_lock.clone();
+                let mcp_pool = mcp_pool.clone();
+                let tx_event = self.tx_event.clone();
+
+                if let Some(result_override) = result_override {
+                    let started_at = Instant::now();
+                    let _ = self
+                        .tx_event
+                        .send(Event::ToolCallComplete {
+                            id: tool_id.clone(),
+                            name: tool_name.clone(),
+                            result: result_override.clone(),
+                        })
+                        .await;
+                    outcomes[index] = Some(ToolExecOutcome {
+                        index,
+                        id: tool_id,
+                        name: tool_name,
+                        input: tool_input,
+                        started_at,
+                        result: result_override,
+                    });
+                    continue;
+                }
+
+                if approval_required {
+                    let started_at = Instant::now();
+                    let result = Self::execute_tool_with_lock(
+                        lock,
+                        supports_parallel,
+                        interactive,
+                        self.tx_event.clone(),
+                        tool_name.clone(),
+                        tool_input.clone(),
+                        registry,
+                        mcp_pool.clone(),
+                    )
+                    .await;
+                    let _ = self
+                        .tx_event
+                        .send(Event::ToolCallComplete {
+                            id: tool_id.clone(),
+                            name: tool_name.clone(),
+                            result: result.clone(),
+                        })
+                        .await;
+                    outcomes[index] = Some(ToolExecOutcome {
+                        index,
+                        id: tool_id,
+                        name: tool_name,
+                        input: tool_input,
+                        started_at,
+                        result,
+                    });
+                    continue;
+                }
+
+                let started_at = Instant::now();
+                tool_tasks.push(async move {
+                    let result = Engine::execute_tool_with_lock(
+                        lock,
+                        supports_parallel,
+                        interactive,
+                        tx_event.clone(),
+                        tool_name.clone(),
+                        tool_input.clone(),
+                        registry,
+                        mcp_pool,
+                    )
+                    .await;
+
+                    let _ = tx_event
+                        .send(Event::ToolCallComplete {
+                            id: tool_id.clone(),
+                            name: tool_name.clone(),
+                            result: result.clone(),
+                        })
+                        .await;
+
+                    ToolExecOutcome {
+                        index,
+                        id: tool_id,
+                        name: tool_name,
+                        input: tool_input,
+                        started_at,
+                        result,
+                    }
+                });
+            }
+
+            while let Some(outcome) = tool_tasks.next().await {
+                let index = outcome.index;
+                outcomes[index] = Some(outcome);
+            }
+
+            for outcome in outcomes.into_iter().flatten() {
+                let duration = outcome.started_at.elapsed();
                 let mut tool_call =
-                    TurnToolCall::new(tool_id.clone(), tool_name.clone(), tool_input.clone());
+                    TurnToolCall::new(outcome.id.clone(), outcome.name.clone(), outcome.input);
 
-                match result {
+                match outcome.result {
                     Ok(output) => {
                         tool_call.set_result(output.content.clone(), duration);
-                        let _ = self
-                            .tx_event
-                            .send(Event::ToolCallComplete {
-                                id: tool_id.clone(),
-                                name: tool_name.clone(),
-                                result: Ok(output.clone()),
-                            })
-                            .await;
-
                         self.session.add_message(Message {
                             role: "user".to_string(),
                             content: vec![ContentBlock::ToolResult {
-                                tool_use_id: tool_id.clone(),
+                                tool_use_id: outcome.id,
                                 content: output.content,
                             }],
                         });
@@ -1086,19 +1255,10 @@ impl Engine {
                     Err(e) => {
                         let error = e.to_string();
                         tool_call.set_error(error.clone(), duration);
-                        let _ = self
-                            .tx_event
-                            .send(Event::ToolCallComplete {
-                                id: tool_id.clone(),
-                                name: tool_name.clone(),
-                                result: Err(e),
-                            })
-                            .await;
-
                         self.session.add_message(Message {
                             role: "user".to_string(),
                             content: vec![ContentBlock::ToolResult {
-                                tool_use_id: tool_id.clone(),
+                                tool_use_id: outcome.id,
                                 content: format!("Error: {error}"),
                             }],
                         });

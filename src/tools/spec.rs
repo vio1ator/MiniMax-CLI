@@ -30,9 +30,9 @@ pub enum ToolCapability {
     RequiresApproval,
 }
 
-/// Approval level required for a tool.
+/// Approval requirement for a tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ApprovalLevel {
+pub enum ApprovalRequirement {
     /// Never needs approval - safe read-only operations
     #[default]
     Auto,
@@ -407,15 +407,15 @@ pub trait ToolSpec: Send + Sync {
     /// Returns the capabilities this tool has.
     fn capabilities(&self) -> Vec<ToolCapability>;
 
-    /// Returns the approval level required for this tool.
-    fn approval_level(&self) -> ApprovalLevel {
+    /// Returns the approval requirement for this tool.
+    fn approval_requirement(&self) -> ApprovalRequirement {
         let caps = self.capabilities();
         if caps.contains(&ToolCapability::ExecutesCode) {
-            ApprovalLevel::Required
+            ApprovalRequirement::Required
         } else if caps.contains(&ToolCapability::WritesFiles) {
-            ApprovalLevel::Suggest
+            ApprovalRequirement::Suggest
         } else {
-            ApprovalLevel::Auto
+            ApprovalRequirement::Auto
         }
     }
 
@@ -430,6 +430,11 @@ pub trait ToolSpec: Send + Sync {
         caps.contains(&ToolCapability::ReadOnly)
             && !caps.contains(&ToolCapability::WritesFiles)
             && !caps.contains(&ToolCapability::ExecutesCode)
+    }
+
+    /// Returns whether this tool can be executed in parallel with others.
+    fn supports_parallel(&self) -> bool {
+        false
     }
 
     /// Execute the tool with the given input and context.
@@ -628,8 +633,8 @@ mod tests {
     }
 
     #[test]
-    fn test_approval_level_default() {
-        let level = ApprovalLevel::default();
-        assert_eq!(level, ApprovalLevel::Auto);
+    fn test_approval_requirement_default() {
+        let level = ApprovalRequirement::default();
+        assert_eq!(level, ApprovalRequirement::Auto);
     }
 }

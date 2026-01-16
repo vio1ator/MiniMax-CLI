@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use super::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
-    optional_u64, required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_bool, optional_u64, required_str,
 };
 
 /// Maximum lines of context for fuzzy matching
@@ -102,8 +102,8 @@ impl ToolSpec for ApplyPatchTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Suggest
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -571,6 +571,6 @@ mod tests {
         assert_eq!(tool.name(), "apply_patch");
         assert!(!tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Suggest);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Suggest);
     }
 }

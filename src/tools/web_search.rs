@@ -1,8 +1,8 @@
 //! Web search tool backed by DuckDuckGo HTML results.
 
 use super::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_u64, required_str,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -68,8 +68,8 @@ impl ToolSpec for WebSearchTool {
         vec![ToolCapability::ReadOnly, ToolCapability::Network]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {

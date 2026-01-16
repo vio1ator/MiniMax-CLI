@@ -5,12 +5,15 @@
 pub mod app;
 pub mod approval;
 pub mod clipboard;
+pub mod event_broker;
 pub mod history;
 pub mod scrolling;
 pub mod selection;
 pub mod streaming;
 pub mod transcript;
 pub mod ui;
+pub mod views;
+pub mod widgets;
 
 // === Re-exports ===
 

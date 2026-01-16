@@ -15,12 +15,13 @@ use crate::models::{Message, SystemPrompt};
 use crate::rlm::{RlmSession, SharedRlmSession};
 use crate::tools::plan::{SharedPlanState, new_shared_plan_state};
 use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
-use crate::tui::approval::{ApprovalMode, ApprovalState};
+use crate::tui::approval::ApprovalMode;
 use crate::tui::clipboard::{ClipboardContent, ClipboardHandler};
 use crate::tui::history::HistoryCell;
 use crate::tui::scrolling::{MouseScrollState, TranscriptScroll};
 use crate::tui::selection::TranscriptSelection;
 use crate::tui::transcript::TranscriptViewCache;
+use crate::tui::views::ViewStack;
 use std::sync::{Arc, Mutex};
 
 // === Types ===
@@ -128,8 +129,6 @@ pub struct App {
     pub system_prompt: Option<SystemPrompt>,
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
-    pub show_help: bool,
-    pub help_scroll: usize,
     pub auto_compact: bool,
     #[allow(dead_code)]
     pub compact_threshold: usize,
@@ -148,9 +147,11 @@ pub struct App {
     pub yolo: bool,
     // Clipboard handler
     pub clipboard: ClipboardHandler,
-    // Tool approval system
-    pub approval_state: ApprovalState,
+    // Tool approval session allowlist
+    pub approval_session_approved: HashSet<String>,
     pub approval_mode: ApprovalMode,
+    // Modal view stack (approval/help/etc.)
+    pub view_stack: ViewStack,
     /// Current session ID for auto-save updates
     pub current_session_id: Option<String>,
     /// Trust mode - allow access outside workspace
@@ -345,8 +346,6 @@ impl App {
             system_prompt: None,
             input_history: Vec::new(),
             history_index: None,
-            show_help: false,
-            help_scroll: 0,
             auto_compact: false,
             compact_threshold: 50000,
             total_tokens: 0,
@@ -363,12 +362,13 @@ impl App {
             hooks,
             yolo: initial_mode == AppMode::Yolo,
             clipboard: ClipboardHandler::new(),
-            approval_state: ApprovalState::new(),
+            approval_session_approved: HashSet::new(),
             approval_mode: if matches!(initial_mode, AppMode::Yolo | AppMode::Rlm | AppMode::Duo) {
                 ApprovalMode::Auto
             } else {
                 ApprovalMode::Suggest
             },
+            view_stack: ViewStack::new(),
             current_session_id: None,
             trust_mode: initial_mode == AppMode::Yolo,
             project_doc: None,
@@ -651,10 +651,6 @@ impl App {
                 }
             }
         }
-    }
-
-    pub fn toggle_help(&mut self) {
-        self.show_help = !self.show_help;
     }
 
     pub fn clear_todos(&mut self) {

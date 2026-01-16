@@ -22,8 +22,8 @@ use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt, Tool};
 use crate::tools::plan::{PlanState, SharedPlanState};
 use crate::tools::registry::{ToolRegistry, ToolRegistryBuilder};
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_bool,
-    optional_u64, required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_bool, optional_u64, required_str,
 };
 use crate::tools::todo::{SharedTodoList, TodoList};
 
@@ -396,8 +396,8 @@ impl ToolSpec for AgentSpawnTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Required
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -563,8 +563,8 @@ impl ToolSpec for AgentCancelTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Required
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
     }
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {

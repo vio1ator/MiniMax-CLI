@@ -4,6 +4,7 @@ use std::fmt::Write;
 
 use crate::tools::plan::PlanState;
 use crate::tui::app::{App, AppAction};
+use crate::tui::views::{HelpView, ModalKind};
 
 use super::CommandResult;
 
@@ -25,7 +26,9 @@ pub fn help(app: &mut App, topic: Option<&str>) -> CommandResult {
     }
 
     // Show help overlay
-    app.show_help = true;
+    if app.view_stack.top_kind() != Some(ModalKind::Help) {
+        app.view_stack.push(HelpView::new());
+    }
     CommandResult::ok()
 }
 

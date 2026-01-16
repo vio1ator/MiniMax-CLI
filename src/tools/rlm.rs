@@ -11,8 +11,8 @@ use crate::rlm::{
     unique_context_id,
 };
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolError, ToolResult, ToolSpec, optional_str,
+    optional_u64, required_str,
 };
 
 const DEFAULT_QUERY_MAX_TOKENS: u32 = 2048;
@@ -89,8 +89,8 @@ impl ToolSpec for RlmExecTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -171,8 +171,8 @@ impl ToolSpec for RlmLoadTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -251,8 +251,8 @@ impl ToolSpec for RlmStatusTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(
@@ -355,8 +355,8 @@ impl ToolSpec for RlmQueryTool {
         vec![ToolCapability::Network, ToolCapability::RequiresApproval]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Suggest
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
     }
 
     async fn execute(

@@ -16,7 +16,9 @@ use crate::duo::SharedDuoSession;
 use crate::models::Tool;
 use crate::rlm::SharedRlmSession;
 
-use super::spec::{ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec};
+use super::spec::{
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+};
 
 // === Types ===
 
@@ -61,6 +63,14 @@ impl ToolRegistry {
     #[must_use]
     pub fn contains(&self, name: &str) -> bool {
         self.tools.contains_key(name)
+    }
+
+    /// Check if a tool supports parallel execution.
+    #[must_use]
+    pub fn tool_supports_parallel(&self, name: &str) -> bool {
+        self.get(name)
+            .map(|tool| tool.supports_parallel())
+            .unwrap_or(false)
     }
 
     /// Get all registered tool names.
@@ -157,7 +167,7 @@ impl ToolRegistry {
     pub fn approval_required_tools(&self) -> Vec<Arc<dyn ToolSpec>> {
         self.tools
             .values()
-            .filter(|t| t.approval_level() == ApprovalLevel::Required)
+            .filter(|t| t.approval_requirement() == ApprovalRequirement::Required)
             .cloned()
             .collect()
     }
@@ -169,8 +179,8 @@ impl ToolRegistry {
             .values()
             .filter(|t| {
                 matches!(
-                    t.approval_level(),
-                    ApprovalLevel::Suggest | ApprovalLevel::Required
+                    t.approval_requirement(),
+                    ApprovalRequirement::Suggest | ApprovalRequirement::Required
                 )
             })
             .cloned()

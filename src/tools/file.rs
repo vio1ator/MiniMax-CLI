@@ -4,8 +4,8 @@
 //! with path validation to prevent escaping the workspace boundary.
 
 use super::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str,
-    required_str,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    optional_str, required_str,
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -41,6 +41,10 @@ impl ToolSpec for ReadFileTool {
 
     fn capabilities(&self) -> Vec<ToolCapability> {
         vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
+    }
+
+    fn supports_parallel(&self) -> bool {
+        true
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -95,8 +99,8 @@ impl ToolSpec for WriteFileTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Suggest
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -172,8 +176,8 @@ impl ToolSpec for EditFileTool {
         ]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Suggest
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Suggest
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -239,6 +243,10 @@ impl ToolSpec for ListDirTool {
 
     fn capabilities(&self) -> Vec<ToolCapability> {
         vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
+    }
+
+    fn supports_parallel(&self) -> bool {
+        true
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
@@ -459,7 +467,7 @@ mod tests {
         assert_eq!(tool.name(), "read_file");
         assert!(tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
     }
 
     #[test]
@@ -468,7 +476,7 @@ mod tests {
         assert_eq!(tool.name(), "write_file");
         assert!(!tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Suggest);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Suggest);
     }
 
     #[test]
@@ -477,7 +485,7 @@ mod tests {
         assert_eq!(tool.name(), "edit_file");
         assert!(!tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Suggest);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Suggest);
     }
 
     #[test]
@@ -486,7 +494,18 @@ mod tests {
         assert_eq!(tool.name(), "list_dir");
         assert!(tool.is_read_only());
         assert!(tool.is_sandboxable());
-        assert_eq!(tool.approval_level(), ApprovalLevel::Auto);
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+
+    #[test]
+    fn test_parallel_support_flags() {
+        let read_tool = ReadFileTool;
+        let list_tool = ListDirTool;
+        let write_tool = WriteFileTool;
+
+        assert!(read_tool.supports_parallel());
+        assert!(list_tool.supports_parallel());
+        assert!(!write_tool.supports_parallel());
     }
 
     #[test]

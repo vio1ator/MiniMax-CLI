@@ -22,7 +22,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -38,18 +38,21 @@ use crate::rlm;
 use crate::session_manager::{SessionManager, create_saved_session, update_session};
 use crate::tools::spec::{ToolError, ToolResult};
 use crate::tools::subagent::{SubAgentResult, SubAgentStatus};
+use crate::tui::event_broker::EventBroker;
 use crate::tui::scrolling::{ScrollDirection, TranscriptScroll};
 use crate::tui::selection::TranscriptSelectionPoint;
 use crate::utils::estimate_message_chars;
 
 use super::app::{App, AppAction, AppMode, OnboardingState, QueuedMessage, TuiOptions};
-use super::approval::{ApprovalMode, ApprovalRequest, render_approval_overlay, requires_approval};
+use super::approval::{ApprovalMode, ApprovalRequest, ApprovalView, ReviewDecision};
 use super::history::{
     ExecCell, ExecSource, ExploringCell, ExploringEntry, GenericToolCell, HistoryCell, McpToolCell,
     PatchSummaryCell, PlanStep, PlanUpdateCell, ToolCell, ToolStatus, ViewImageCell, WebSearchCell,
     extract_reasoning_summary, history_cells_from_message, summarize_mcp_output,
     summarize_tool_args, summarize_tool_output,
 };
+use super::views::{HelpView, ModalKind, ViewEvent};
+use super::widgets::{ChatWidget, ComposerWidget, Renderable};
 
 // === Constants ===
 
@@ -113,6 +116,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
     )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+    let event_broker = EventBroker::new();
 
     let mut app = App::new(options.clone(), config);
 
@@ -202,7 +206,14 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         let _ = app.execute_hooks(HookEvent::SessionStart, &context);
     }
 
-    let result = run_event_loop(&mut terminal, &mut app, config, engine_handle).await;
+    let result = run_event_loop(
+        &mut terminal,
+        &mut app,
+        config,
+        engine_handle,
+        &event_broker,
+    )
+    .await;
 
     // Fire session end hook
     {
@@ -228,6 +239,7 @@ async fn run_event_loop(
     app: &mut App,
     _config: &Config,
     engine_handle: EngineHandle,
+    event_broker: &EventBroker,
 ) -> Result<()> {
     // Track streaming state
     let mut current_streaming_text = String::new();
@@ -407,6 +419,18 @@ async fn run_event_loop(
                     EngineEvent::Status { message } => {
                         app.status_message = Some(message);
                     }
+                    EngineEvent::PauseEvents => {
+                        if !event_broker.is_paused() {
+                            pause_terminal(terminal)?;
+                            event_broker.pause_events();
+                        }
+                    }
+                    EngineEvent::ResumeEvents => {
+                        if event_broker.is_paused() {
+                            resume_terminal(terminal)?;
+                            event_broker.resume_events();
+                        }
+                    }
                     EngineEvent::AgentSpawned { id, prompt } => {
                         app.add_message(HistoryCell::System {
                             content: format!(
@@ -436,17 +460,10 @@ async fn run_event_loop(
                         tool_name,
                         description,
                     } => {
-                        let needs_approval = requires_approval(
-                            app.mode,
-                            &tool_name,
-                            app.approval_mode,
-                            &app.approval_state.session_approved,
-                        );
-                        if !needs_approval {
-                            app.approval_state.clear();
+                        let session_approved = app.approval_session_approved.contains(&tool_name);
+                        if session_approved || app.approval_mode == ApprovalMode::Auto {
                             let _ = engine_handle.approve_tool_call(id.clone()).await;
                         } else if app.approval_mode == ApprovalMode::Never {
-                            app.approval_state.clear();
                             let _ = engine_handle.deny_tool_call(id.clone()).await;
                             app.add_message(HistoryCell::System {
                                 content: format!(
@@ -457,7 +474,7 @@ async fn run_event_loop(
                             // Create approval request and show overlay
                             let request =
                                 ApprovalRequest::new(&id, &tool_name, &serde_json::json!({}));
-                            app.approval_state.request(request);
+                            app.view_stack.push(ApprovalView::new(request));
                             app.add_message(HistoryCell::System {
                                 content: format!(
                                     "Approval required for tool '{tool_name}': {description}"
@@ -477,16 +494,14 @@ async fn run_event_loop(
             dispatch_user_message(app, &engine_handle, next).await?;
         }
 
-        if app.approval_state.visible
-            && app.approval_state.is_timed_out()
-            && let Some((tool_id, _)) = app
-                .approval_state
-                .apply_decision(crate::tui::approval::ReviewDecision::Denied)
-        {
-            let _ = engine_handle.deny_tool_call(tool_id).await;
-            app.add_message(HistoryCell::System {
-                content: "Approval request timed out - denied".to_string(),
-            });
+        if !app.view_stack.is_empty() {
+            let events = app.view_stack.tick();
+            handle_view_events(app, &engine_handle, events).await;
+        }
+
+        if event_broker.is_paused() {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            continue;
         }
 
         terminal.draw(|f| render(f, app))?; // app is &mut
@@ -583,80 +598,18 @@ async fn run_event_loop(
                 continue;
             }
 
-            // Handle help popup
-            if app.show_help {
-                match key.code {
-                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter => {
-                        app.show_help = false;
-                        app.help_scroll = 0;
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.help_scroll = app.help_scroll.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.help_scroll = app.help_scroll.saturating_add(1);
-                    }
-                    _ => {}
+            if key.code == KeyCode::F(1) {
+                if app.view_stack.top_kind() == Some(ModalKind::Help) {
+                    app.view_stack.pop();
+                } else {
+                    app.view_stack.push(HelpView::new());
                 }
                 continue;
             }
 
-            // Handle approval overlay
-            if app.approval_state.visible {
-                use crate::tui::approval::ReviewDecision;
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        app.approval_state.select_prev();
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        app.approval_state.select_next();
-                    }
-                    KeyCode::Enter => {
-                        let decision = app.approval_state.current_decision();
-                        if let Some((tool_id, decision)) =
-                            app.approval_state.apply_decision(decision.clone())
-                        {
-                            match decision {
-                                ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
-                                    let _ = engine_handle.approve_tool_call(tool_id).await;
-                                }
-                                ReviewDecision::Denied | ReviewDecision::Abort => {
-                                    let _ = engine_handle.deny_tool_call(tool_id).await;
-                                }
-                            }
-                        }
-                    }
-                    KeyCode::Char('y') => {
-                        if let Some((tool_id, _)) =
-                            app.approval_state.apply_decision(ReviewDecision::Approved)
-                        {
-                            let _ = engine_handle.approve_tool_call(tool_id).await;
-                        }
-                    }
-                    KeyCode::Char('a') => {
-                        if let Some((tool_id, _)) = app
-                            .approval_state
-                            .apply_decision(ReviewDecision::ApprovedForSession)
-                        {
-                            let _ = engine_handle.approve_tool_call(tool_id).await;
-                        }
-                    }
-                    KeyCode::Char('n') => {
-                        if let Some((tool_id, _)) =
-                            app.approval_state.apply_decision(ReviewDecision::Denied)
-                        {
-                            let _ = engine_handle.deny_tool_call(tool_id).await;
-                        }
-                    }
-                    KeyCode::Esc => {
-                        if let Some((tool_id, _)) =
-                            app.approval_state.apply_decision(ReviewDecision::Abort)
-                        {
-                            let _ = engine_handle.deny_tool_call(tool_id).await;
-                        }
-                    }
-                    _ => {}
-                }
+            if !app.view_stack.is_empty() {
+                let events = app.view_stack.handle_key(key);
+                handle_view_events(app, &engine_handle, events).await;
                 continue;
             }
 
@@ -681,9 +634,6 @@ async fn run_event_loop(
                         let _ = engine_handle.send(Op::Shutdown).await;
                         return Ok(());
                     }
-                }
-                KeyCode::F(1) => {
-                    app.toggle_help();
                 }
                 KeyCode::Esc => {
                     if app.is_loading {
@@ -1437,12 +1387,11 @@ fn render(f: &mut Frame, app: &mut App) {
     let status_height =
         u16::try_from(status_lines + queued_lines + editing_lines).unwrap_or(u16::MAX);
     let prompt = prompt_for_mode(app.mode, app.rlm_repl_active);
-    let composer_height = composer_height(
-        &app.input,
-        size.width,
-        size.height.saturating_sub(footer_height + status_height),
-        prompt,
-    );
+    let available_height = size.height.saturating_sub(footer_height + status_height);
+    let composer_height = {
+        let composer_widget = ComposerWidget::new(app, prompt, available_height);
+        composer_widget.desired_height(size.width)
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1454,102 +1403,84 @@ fn render(f: &mut Frame, app: &mut App) {
         ])
         .split(size);
 
-    render_chat(f, chunks[0], app);
+    {
+        let chat_widget = ChatWidget::new(app, chunks[0]);
+        let buf = f.buffer_mut();
+        chat_widget.render(chunks[0], buf);
+    }
     if status_height > 0 {
         render_status_indicator(f, chunks[1], app, &queued_preview);
     }
-    render_composer(f, chunks[2], app);
+    let cursor_pos = {
+        let composer_widget = ComposerWidget::new(app, prompt, available_height);
+        let buf = f.buffer_mut();
+        composer_widget.render(chunks[2], buf);
+        composer_widget.cursor_pos(chunks[2])
+    };
+    if let Some(cursor_pos) = cursor_pos {
+        f.set_cursor_position(cursor_pos);
+    }
     render_footer(f, chunks[3], app);
 
-    if app.show_help {
-        render_help_popup(f, size, app.help_scroll);
-    }
-
-    // Render approval overlay if visible
-    if app.approval_state.visible {
-        render_approval_overlay(f, &app.approval_state);
+    if !app.view_stack.is_empty() {
+        let buf = f.buffer_mut();
+        app.view_stack.render(size, buf);
     }
 }
 
-fn render_chat(f: &mut Frame, area: Rect, app: &mut App) {
-    let mut content_area = area;
-    let mut scrollbar_area = None;
+async fn handle_view_events(app: &mut App, engine_handle: &EngineHandle, events: Vec<ViewEvent>) {
+    for event in events {
+        match event {
+            ViewEvent::ApprovalDecision {
+                tool_id,
+                tool_name,
+                decision,
+                timed_out,
+            } => {
+                if decision == ReviewDecision::ApprovedForSession {
+                    app.approval_session_approved.insert(tool_name);
+                }
 
-    let show_scrollbar = !matches!(app.transcript_scroll, TranscriptScroll::ToBottom)
-        && area.width > 1
-        && area.height > 1;
-    if show_scrollbar {
-        content_area.width = content_area.width.saturating_sub(1);
-        scrollbar_area = Some(Rect {
-            x: content_area.x + content_area.width,
-            y: content_area.y,
-            width: 1,
-            height: content_area.height,
-        });
-    }
+                match decision {
+                    ReviewDecision::Approved | ReviewDecision::ApprovedForSession => {
+                        let _ = engine_handle.approve_tool_call(tool_id).await;
+                    }
+                    ReviewDecision::Denied | ReviewDecision::Abort => {
+                        let _ = engine_handle.deny_tool_call(tool_id).await;
+                    }
+                }
 
-    app.transcript_cache
-        .ensure(&app.history, content_area.width.max(1), app.history_version);
-
-    let total_lines = app.transcript_cache.total_lines();
-    let visible_lines = content_area.height as usize;
-    let line_meta = app.transcript_cache.line_meta();
-
-    if app.pending_scroll_delta != 0 {
-        app.transcript_scroll =
-            app.transcript_scroll
-                .scrolled_by(app.pending_scroll_delta, line_meta, visible_lines);
-        app.pending_scroll_delta = 0;
-    }
-
-    let max_start = total_lines.saturating_sub(visible_lines);
-    let (scroll_state, top) = app.transcript_scroll.resolve_top(line_meta, max_start);
-    app.transcript_scroll = scroll_state;
-
-    app.last_transcript_area = Some(content_area);
-    app.last_scrollbar_area = scrollbar_area;
-    app.last_transcript_top = top;
-    app.last_transcript_visible = visible_lines;
-    app.last_transcript_total = total_lines;
-    app.last_transcript_padding_top = 0;
-
-    let end = (top + visible_lines).min(total_lines);
-    let mut visible = if total_lines == 0 {
-        vec![Line::from("")]
-    } else {
-        app.transcript_cache.lines()[top..end].to_vec()
-    };
-
-    apply_selection(&mut visible, top, app);
-
-    // Bottom-align the transcript when the user is "following" the chat and the
-    // content doesn't fill the available viewport height.
-    if matches!(app.transcript_scroll, TranscriptScroll::ToBottom) {
-        app.last_transcript_padding_top = visible_lines.saturating_sub(visible.len());
-        pad_lines_to_bottom(&mut visible, visible_lines);
-    }
-
-    let paragraph = Paragraph::new(visible);
-    f.render_widget(paragraph, content_area);
-
-    if let Some(scrollbar_area) = scrollbar_area {
-        render_scrollbar(f, scrollbar_area, top, visible_lines, total_lines);
+                if timed_out {
+                    app.add_message(HistoryCell::System {
+                        content: "Approval request timed out - denied".to_string(),
+                    });
+                }
+            }
+        }
     }
 }
 
-fn pad_lines_to_bottom(lines: &mut Vec<Line<'static>>, height: usize) {
-    if lines.len() >= height {
-        return;
-    }
-    let padding = height.saturating_sub(lines.len());
-    if padding == 0 {
-        return;
-    }
+fn pause_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        DisableBracketedPaste
+    )?;
+    Ok(())
+}
 
-    let mut padded = Vec::with_capacity(height);
-    padded.extend(std::iter::repeat_n(Line::from(""), padding));
-    padded.append(lines);
-    *lines = padded;
+fn resume_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
+    enable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
+    terminal.clear()?;
+    Ok(())
 }
 
 fn render_status_indicator(f: &mut Frame, area: Rect, app: &App, queued: &[String]) {
@@ -1623,60 +1554,6 @@ fn render_status_indicator(f: &mut Frame, area: Rect, app: &App, queued: &[Strin
 
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
     f.render_widget(paragraph, area);
-}
-
-fn render_composer(f: &mut Frame, area: Rect, app: &mut App) {
-    let prompt = prompt_for_mode(app.mode, app.rlm_repl_active);
-    let prompt_width = prompt.width();
-    let prompt_width_u16 = u16::try_from(prompt_width).unwrap_or(u16::MAX);
-    let content_width = usize::from(area.width.saturating_sub(prompt_width_u16).max(1));
-    let max_height = usize::from(area.height);
-
-    let (visible_lines, cursor_row, cursor_col) =
-        layout_input(&app.input, app.cursor_position, content_width, max_height);
-
-    let background = Style::default().bg(Color::Rgb(24, 32, 24));
-    let block = Block::default().style(background);
-    f.render_widget(block, area);
-
-    let mut lines = Vec::new();
-    if app.input.is_empty() {
-        let placeholder = if app.mode == AppMode::Rlm {
-            if app.rlm_repl_active {
-                "Type an RLM expression or /repl to exit..."
-            } else {
-                "Ask a question or /repl to enter expression mode..."
-            }
-        } else {
-            "Type a message or /help for commands..."
-        };
-        lines.push(Line::from(vec![
-            Span::styled(prompt, Style::default().fg(Color::Green).bold()),
-            Span::styled(placeholder, Style::default().fg(Color::DarkGray).italic()),
-        ]));
-    } else {
-        for (idx, line) in visible_lines.iter().enumerate() {
-            let prefix = if idx == 0 { prompt } else { "  " };
-            lines.push(Line::from(vec![
-                Span::styled(prefix, Style::default().fg(Color::Green).bold()),
-                Span::styled(line.clone(), Style::default().fg(Color::White)),
-            ]));
-        }
-    }
-
-    let paragraph = Paragraph::new(lines).style(background);
-    f.render_widget(paragraph, area);
-
-    let cursor_x = area
-        .x
-        .saturating_add(prompt_width_u16)
-        .saturating_add(u16::try_from(cursor_col).unwrap_or(u16::MAX));
-    let cursor_y = area
-        .y
-        .saturating_add(u16::try_from(cursor_row).unwrap_or(u16::MAX));
-    if cursor_x < area.x + area.width && cursor_y < area.y + area.height {
-        f.set_cursor_position((cursor_x, cursor_y));
-    }
 }
 
 fn render_footer(f: &mut Frame, area: Rect, app: &App) {
@@ -1830,269 +1707,6 @@ fn prompt_for_mode(mode: AppMode, rlm_repl_active: bool) -> &'static str {
         }
         AppMode::Duo => "duo> ",
     }
-}
-
-fn composer_height(input: &str, width: u16, available_height: u16, prompt: &str) -> u16 {
-    let prompt_width = prompt.width();
-    let prompt_width_u16 = u16::try_from(prompt_width).unwrap_or(u16::MAX);
-    let content_width = usize::from(width.saturating_sub(prompt_width_u16).max(1));
-    let mut line_count = wrap_input_lines(input, content_width).len();
-    if line_count == 0 {
-        line_count = 1;
-    }
-    let max_height = usize::from(available_height.clamp(1, 8));
-    line_count.clamp(1, max_height).try_into().unwrap_or(1)
-}
-
-fn layout_input(
-    input: &str,
-    cursor: usize,
-    width: usize,
-    max_height: usize,
-) -> (Vec<String>, usize, usize) {
-    let mut lines = wrap_input_lines(input, width);
-    if lines.is_empty() {
-        lines.push(String::new());
-    }
-    let (cursor_row, cursor_col) = cursor_row_col(input, cursor, width.max(1));
-
-    let max_height = max_height.max(1);
-    let mut start = 0usize;
-    if cursor_row >= max_height {
-        start = cursor_row + 1 - max_height;
-    }
-    if start + max_height > lines.len() {
-        start = lines.len().saturating_sub(max_height);
-    }
-    let visible = lines
-        .into_iter()
-        .skip(start)
-        .take(max_height)
-        .collect::<Vec<_>>();
-    let visible_cursor_row = cursor_row.saturating_sub(start);
-
-    (
-        visible,
-        visible_cursor_row,
-        cursor_col.min(width.saturating_sub(1)),
-    )
-}
-
-fn cursor_row_col(input: &str, cursor: usize, width: usize) -> (usize, usize) {
-    let mut row = 0usize;
-    let mut col = 0usize;
-
-    for (char_idx, ch) in input.chars().enumerate() {
-        if char_idx >= cursor {
-            break;
-        }
-
-        if ch == '\n' {
-            row += 1;
-            col = 0;
-            continue;
-        }
-
-        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(1);
-        if col + ch_width > width {
-            row += 1;
-            col = 0;
-        }
-        col += ch_width;
-        if col >= width {
-            row += 1;
-            col = 0;
-        }
-    }
-
-    (row, col.min(width.saturating_sub(1)))
-}
-
-fn wrap_input_lines(input: &str, width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    if input.is_empty() {
-        return lines;
-    }
-
-    for raw in input.split('\n') {
-        let wrapped = wrap_text(raw, width);
-        if wrapped.is_empty() {
-            lines.push(String::new());
-        } else {
-            lines.extend(wrapped);
-        }
-    }
-
-    if input.ends_with('\n') {
-        lines.push(String::new());
-    }
-
-    lines
-}
-
-fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    if width == 0 {
-        return vec![text.to_string()];
-    }
-    if text.is_empty() {
-        return vec![String::new()];
-    }
-
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut current_width = 0;
-
-    for word in text.split_whitespace() {
-        let word_width = UnicodeWidthStr::width(word);
-        if current_width == 0 {
-            current.push_str(word);
-            current_width = word_width;
-            continue;
-        }
-
-        if current_width + 1 + word_width <= width {
-            current.push(' ');
-            current.push_str(word);
-            current_width += 1 + word_width;
-        } else {
-            lines.push(current);
-            current = word.to_string();
-            current_width = word_width;
-        }
-    }
-
-    if !current.is_empty() {
-        lines.push(current);
-    }
-
-    if lines.is_empty() {
-        vec![String::new()]
-    } else {
-        lines
-    }
-}
-
-fn apply_selection(lines: &mut [Line<'static>], top: usize, app: &App) {
-    let Some((start, end)) = app.transcript_selection.ordered_endpoints() else {
-        return;
-    };
-
-    let selection_style = Style::default().bg(Color::Rgb(60, 60, 80));
-
-    for (idx, line) in lines.iter_mut().enumerate() {
-        let line_index = top + idx;
-        if line_index < start.line_index || line_index > end.line_index {
-            continue;
-        }
-
-        // Determine column range for this line
-        let (col_start, col_end) = if start.line_index == end.line_index {
-            // Single line selection
-            (start.column, end.column)
-        } else if line_index == start.line_index {
-            // First line of multi-line selection
-            (start.column, usize::MAX)
-        } else if line_index == end.line_index {
-            // Last line of multi-line selection
-            (0, end.column)
-        } else {
-            // Middle line - select entire line
-            (0, usize::MAX)
-        };
-
-        // Apply selection to character range within the line
-        let new_spans = apply_selection_to_line(line, col_start, col_end, selection_style);
-        line.spans = new_spans;
-    }
-}
-
-fn apply_selection_to_line(
-    line: &Line<'static>,
-    col_start: usize,
-    col_end: usize,
-    selection_style: Style,
-) -> Vec<Span<'static>> {
-    let mut result = Vec::new();
-    let mut current_col = 0usize;
-
-    for span in &line.spans {
-        let span_text: &str = span.content.as_ref();
-        let span_len = span_text.chars().count();
-        let span_end = current_col + span_len;
-
-        if span_end <= col_start || current_col >= col_end {
-            // Span is entirely outside selection
-            result.push(span.clone());
-        } else if current_col >= col_start && span_end <= col_end {
-            // Span is entirely within selection
-            result.push(Span::styled(
-                span.content.clone(),
-                span.style.patch(selection_style),
-            ));
-        } else {
-            // Span is partially selected - split it
-            let chars: Vec<char> = span_text.chars().collect();
-            let mut before = String::new();
-            let mut selected = String::new();
-            let mut after = String::new();
-
-            for (i, &ch) in chars.iter().enumerate() {
-                let char_col = current_col + i;
-                if char_col < col_start {
-                    before.push(ch);
-                } else if char_col < col_end {
-                    selected.push(ch);
-                } else {
-                    after.push(ch);
-                }
-            }
-
-            if !before.is_empty() {
-                result.push(Span::styled(before, span.style));
-            }
-            if !selected.is_empty() {
-                result.push(Span::styled(selected, span.style.patch(selection_style)));
-            }
-            if !after.is_empty() {
-                result.push(Span::styled(after, span.style));
-            }
-        }
-
-        current_col = span_end;
-    }
-
-    result
-}
-
-fn render_scrollbar(f: &mut Frame, area: Rect, top: usize, visible: usize, total: usize) {
-    if total <= visible || area.height == 0 {
-        return;
-    }
-
-    let height = usize::from(area.height);
-    let max_start = total.saturating_sub(visible).max(1);
-    let thumb_height = visible
-        .saturating_mul(height)
-        .div_ceil(total)
-        .clamp(1, height);
-    let track = height.saturating_sub(thumb_height).max(1);
-    let thumb_start = (top.saturating_mul(track) + max_start / 2) / max_start;
-
-    let mut lines = Vec::new();
-    for row in 0..height {
-        let ch = if row >= thumb_start && row < thumb_start + thumb_height {
-            "#"
-        } else {
-            "|"
-        };
-        lines.push(Line::from(Span::styled(
-            ch,
-            Style::default().fg(Color::DarkGray),
-        )));
-    }
-
-    let scrollbar = Paragraph::new(lines);
-    f.render_widget(scrollbar, area);
 }
 
 fn context_indicator(app: &App) -> String {
@@ -2423,98 +2037,6 @@ fn slice_text(text: &str, start: usize, end: usize) -> String {
         }
     }
     out
-}
-
-fn render_help_popup(f: &mut Frame, area: Rect, scroll: usize) {
-    let popup_width = 65.min(area.width - 4);
-    let popup_height = 24.min(area.height - 4);
-
-    let popup_area = Rect {
-        x: (area.width - popup_width) / 2,
-        y: (area.height - popup_height) / 2,
-        width: popup_width,
-        height: popup_height,
-    };
-
-    f.render_widget(Clear, popup_area);
-
-    // Build all help lines
-    let mut help_lines: Vec<Line> = vec![
-        Line::from(vec![Span::styled(
-            "MiniMax CLI Help",
-            Style::default().fg(MINIMAX_RED).bold(),
-        )]),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Modes:",
-            Style::default().fg(MINIMAX_CORAL).bold(),
-        )]),
-        Line::from("  Tab cycles modes: Normal → Plan → Agent → Yolo → RLM"),
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "Commands:",
-            Style::default().fg(MINIMAX_CORAL).bold(),
-        )]),
-    ];
-
-    // Add all commands
-    for cmd in commands::COMMANDS.iter() {
-        help_lines.push(Line::from(format!(
-            "  /{:<12} - {}",
-            cmd.name, cmd.description
-        )));
-    }
-
-    help_lines.push(Line::from(""));
-    help_lines.push(Line::from(vec![Span::styled(
-        "Tools:",
-        Style::default().fg(MINIMAX_CORAL).bold(),
-    )]));
-    help_lines.push(Line::from(
-        "  web_search   - Search the web (DuckDuckGo; MCP optional)",
-    ));
-    help_lines.push(Line::from("  mcp_*        - Tools exposed by MCP servers"));
-    help_lines.push(Line::from(""));
-    help_lines.push(Line::from(vec![Span::styled(
-        "Keys:",
-        Style::default().fg(MINIMAX_CORAL).bold(),
-    )]));
-    help_lines.push(Line::from("  Enter        - Send message"));
-    help_lines.push(Line::from("  Esc          - Cancel request"));
-    help_lines.push(Line::from("  Tab          - Cycle modes"));
-    help_lines.push(Line::from("  Ctrl+C       - Exit"));
-    help_lines.push(Line::from("  Up/Down      - Scroll this help"));
-    help_lines.push(Line::from(""));
-
-    let total_lines = help_lines.len();
-    let visible_lines = (popup_height as usize).saturating_sub(3); // account for border + footer
-    let max_scroll = total_lines.saturating_sub(visible_lines);
-    let scroll = scroll.min(max_scroll);
-
-    // Show scroll indicator if needed
-    let scroll_indicator = if total_lines > visible_lines {
-        format!(" [{}/{} ↑↓] ", scroll + 1, max_scroll + 1)
-    } else {
-        String::new()
-    };
-
-    let help = Paragraph::new(help_lines)
-        .block(
-            Block::default()
-                .title(Line::from(vec![Span::styled(
-                    " Help ",
-                    Style::default().fg(MINIMAX_RED).bold(),
-                )]))
-                .title_bottom(Line::from(vec![
-                    Span::styled(" Esc to close ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(scroll_indicator, Style::default().fg(MINIMAX_CORAL)),
-                ]))
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(MINIMAX_CORAL)),
-        )
-        .scroll((scroll as u16, 0));
-
-    f.render_widget(help, popup_area);
 }
 
 #[allow(clippy::too_many_lines)]
@@ -3248,33 +2770,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::tempdir;
-
-    #[test]
-    fn pad_lines_to_bottom_noop_when_already_filled() {
-        let mut lines = vec![Line::from("one"), Line::from("two")];
-        pad_lines_to_bottom(&mut lines, 2);
-        assert_eq!(lines, vec![Line::from("one"), Line::from("two")]);
-    }
-
-    #[test]
-    fn pad_lines_to_bottom_prepends_empty_lines() {
-        let mut lines = vec![Line::from("one"), Line::from("two")];
-        pad_lines_to_bottom(&mut lines, 5);
-
-        assert_eq!(lines.len(), 5);
-        assert_eq!(lines[0], Line::from(""));
-        assert_eq!(lines[1], Line::from(""));
-        assert_eq!(lines[2], Line::from(""));
-        assert_eq!(lines[3], Line::from("one"));
-        assert_eq!(lines[4], Line::from("two"));
-    }
-
-    #[test]
-    fn pad_lines_to_bottom_noop_when_height_is_zero() {
-        let mut lines = vec![Line::from("one")];
-        pad_lines_to_bottom(&mut lines, 0);
-        assert_eq!(lines, vec![Line::from("one")]);
-    }
 
     #[test]
     fn selection_point_from_position_ignores_top_padding() {

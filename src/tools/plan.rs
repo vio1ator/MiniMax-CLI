@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::tools::spec::{
-    ApprovalLevel, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
+    ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
 
 // === Types ===
@@ -344,8 +344,8 @@ impl ToolSpec for UpdatePlanTool {
         vec![ToolCapability::WritesFiles]
     }
 
-    fn approval_level(&self) -> ApprovalLevel {
-        ApprovalLevel::Auto
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
     }
 
     async fn execute(

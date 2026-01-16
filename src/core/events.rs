@@ -76,6 +76,12 @@ pub enum Event {
     /// Status message for UI display
     Status { message: String },
 
+    /// Pause terminal input events (for interactive subprocesses)
+    PauseEvents,
+
+    /// Resume terminal input events after subprocess completion
+    ResumeEvents,
+
     /// Request user approval for a tool call
     ApprovalRequired {
         id: String,
