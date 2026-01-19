@@ -613,16 +613,15 @@ async fn run_event_loop(
             let is_plain_char = matches!(key.code, KeyCode::Char(_)) && !has_ctrl_or_alt;
             let is_enter = matches!(key.code, KeyCode::Enter);
 
-            if !is_plain_char && !is_enter {
-                if let Some(pending) = app.paste_burst.flush_before_modified_input() {
-                    app.insert_str(&pending);
-                }
+            if !is_plain_char
+                && !is_enter
+                && let Some(pending) = app.paste_burst.flush_before_modified_input()
+            {
+                app.insert_str(&pending);
             }
 
-            if is_plain_char || is_enter {
-                if handle_paste_burst_key(app, &key, now) {
-                    continue;
-                }
+            if (is_plain_char || is_enter) && handle_paste_burst_key(app, &key, now) {
+                continue;
             }
 
             // Global keybindings
