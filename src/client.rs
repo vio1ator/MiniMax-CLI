@@ -240,7 +240,11 @@ impl MiniMaxClient {
 impl AnthropicClient {
     /// Create an Anthropic-compatible client using the default model.
     pub fn new(config: &Config) -> Result<Self> {
-        Self::with_model(config, "claude-sonnet-4-20250514".to_string())
+        let model = config
+            .default_text_model
+            .clone()
+            .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+        Self::with_model(config, model)
     }
 
     /// Create an Anthropic-compatible client pinned to a specific model.
@@ -251,7 +255,7 @@ impl AnthropicClient {
     /// # use crate::client::AnthropicClient;
     /// # use crate::config::Config;
     /// # fn example(config: &Config) -> anyhow::Result<()> {
-    /// let client = AnthropicClient::with_model(config, "claude-sonnet-4-20250514".to_string())?;
+    /// let client = AnthropicClient::with_model(config, "MiniMax-M2.1".to_string())?;
     /// # Ok(())
     /// # }
     /// ```
