@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/MiniMax-CLI/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/minimax-cli)](https://crates.io/crates/minimax-cli)
-[![npm](https://img.shields.io/npm/v/@hmbown/minimax-cli)](https://www.npmjs.com/package/@hmbown/minimax-cli)
 
 Unofficial terminal UI (TUI) + CLI for the [MiniMax platform](https://platform.minimax.io): chat with **MiniMax-M2.1**, run an approval-gated tool-using agent, and generate media (images, video, music, TTS).
 
@@ -14,27 +13,19 @@ Not affiliated with MiniMax Inc.
 2. Install and run:
 
 ```bash
-npm install -g @hmbown/minimax-cli
+cargo install minimax-cli --locked
 export MINIMAX_API_KEY="YOUR_MINIMAX_API_KEY"
 minimax
 ```
+
+Or download a prebuilt binary from [GitHub Releases](https://github.com/Hmbown/MiniMax-CLI/releases).
 
 3. Press `F1` or run `/help` for the in-app command list
 4. If anything looks off, run `minimax doctor`
 
 ## Install
 
-### Prebuilt via npm/bun (recommended)
-
-The npm package is a thin wrapper that downloads the platform-appropriate Rust binary from GitHub Releases.
-
-```bash
-# installs `minimax`
-npm install -g @hmbown/minimax-cli
-bun install -g @hmbown/minimax-cli
-```
-
-### From crates.io (Rust)
+### From crates.io (recommended)
 
 ```bash
 cargo install minimax-cli --locked
