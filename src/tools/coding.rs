@@ -130,7 +130,7 @@ impl ToolSpec for CodingCompleteTool {
             .map_err(|e| ToolError::execution_failed(e.to_string()))?;
 
         // Extract code from response
-        let text = extract_code_from_response(&response, language.as_deref());
+        let text = extract_code_from_response(&response, language);
 
         Ok(ToolResult::success(text))
     }
@@ -207,7 +207,7 @@ impl ToolSpec for CodingReviewTool {
             2. Specific line numbers and suggestions\n\
             3. Overall code quality score (0-10)\n\
             4. Recommended improvements",
-            language.as_deref().unwrap_or("text"),
+            language.unwrap_or("text"),
             code,
             focus
         );
@@ -258,21 +258,17 @@ fn extract_code_from_response(
         r"```[\w]*\s*\n([\s\S]*?)\n```".to_string()
     };
 
-    if let Ok(regex) = regex::Regex::new(&code_block_pattern) {
-        if let Some(captures) = regex.captures(&text) {
-            if let Some(code_match) = captures.get(1) {
-                return code_match.as_str().trim().to_string();
-            }
-        }
+    if let Ok(regex) = regex::Regex::new(&code_block_pattern)
+        && let Some(code_match) = regex.captures(&text).and_then(|captures| captures.get(1))
+    {
+        return code_match.as_str().trim().to_string();
     }
 
     // Fallback: try generic code block
-    if let Ok(regex) = regex::Regex::new(r"```\s*\n([\s\S]*?)\n```") {
-        if let Some(captures) = regex.captures(&text) {
-            if let Some(code_match) = captures.get(1) {
-                return code_match.as_str().trim().to_string();
-            }
-        }
+    if let Ok(regex) = regex::Regex::new(r"```\s*\n([\s\S]*?)\n```")
+        && let Some(code_match) = regex.captures(&text).and_then(|captures| captures.get(1))
+    {
+        return code_match.as_str().trim().to_string();
     }
 
     // Return as-is if no code block found

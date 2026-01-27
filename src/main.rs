@@ -520,7 +520,10 @@ async fn main() -> Result<()> {
                 run_features_command(&config, command)
             }
             Commands::Sandbox(args) => run_sandbox_command(args),
-            Commands::Modes => Ok(run_modes()),
+            Commands::Modes => {
+                run_modes();
+                Ok(())
+            }
             Commands::Rlm(args) => run_rlm_command(args),
             Commands::Duo(args) => run_duo_command(args),
             Commands::Coding(args) => run_coding_command(args),

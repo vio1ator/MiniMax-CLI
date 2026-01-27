@@ -1479,7 +1479,7 @@ fn render(f: &mut Frame, app: &mut App) {
     // Footer is 2 lines when showing status info, 1 line otherwise
     let show_status_footer = app.current_process.is_some()
         || !app.recent_files.is_empty()
-        || app.todo_summary().is_empty() == false;
+        || !app.todo_summary().is_empty();
     let footer_height = if show_status_footer { 2 } else { 1 };
     let queued_preview = app.queued_message_previews(MAX_QUEUED_PREVIEW);
     let queued_lines = if queued_preview.is_empty() {
@@ -1739,7 +1739,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App) {
     // Determine if we should show the status footer (2 lines)
     let show_status_footer = app.current_process.is_some()
         || !app.recent_files.is_empty()
-        || app.todo_summary().is_empty() == false;
+        || !app.todo_summary().is_empty();
 
     if show_status_footer && area.height >= 2 {
         // Render status footer (line 1: process, files, tasks)

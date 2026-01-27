@@ -707,24 +707,23 @@ fn extract_score(text: &str) -> Option<f64> {
     ];
 
     for pattern in &patterns {
-        if let Some(captures) = regex::Regex::new(pattern)
+        if let Some(m) = regex::Regex::new(pattern)
             .ok()
             .and_then(|r| r.captures(text))
+            .and_then(|captures| captures.get(1))
         {
-            if let Some(m) = captures.get(1) {
-                let value: f64 = m.as_str().parse().ok()?;
-                // Normalize to 0-1 range
-                let normalized = if value <= 1.0 {
-                    value
-                } else if value <= 10.0 {
-                    value / 10.0
-                } else if value <= 100.0 {
-                    value / 100.0
-                } else {
-                    continue;
-                };
-                return Some(normalized.clamp(0.0, 1.0));
-            }
+            let value: f64 = m.as_str().parse().ok()?;
+            // Normalize to 0-1 range
+            let normalized = if value <= 1.0 {
+                value
+            } else if value <= 10.0 {
+                value / 10.0
+            } else if value <= 100.0 {
+                value / 100.0
+            } else {
+                continue;
+            };
+            return Some(normalized.clamp(0.0, 1.0));
         }
     }
 
@@ -752,7 +751,7 @@ where
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<String, anyhow::Error>> + Send>,
     >,
-    F3: Fn(String) -> (),
+    F3: Fn(String),
 {
     let state = session
         .get_active_mut()

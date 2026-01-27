@@ -202,10 +202,10 @@ impl Config {
     /// Read the MiniMax Coding API key from config/environment.
     pub fn coding_api_key(&self) -> Result<String> {
         // Try api_key_2 first, fall back to primary api_key
-        if let Some(ref key) = self.api_key_2 {
-            if !key.trim().is_empty() {
-                return Ok(key.clone());
-            }
+        if let Some(ref key) = self.api_key_2
+            && !key.trim().is_empty()
+        {
+            return Ok(key.clone());
         }
         // Fall back to primary API key
         self.api_key
