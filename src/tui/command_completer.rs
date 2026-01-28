@@ -5,8 +5,8 @@
 
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style, Stylize},
+    layout::Rect,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem},
 };
@@ -123,12 +123,14 @@ impl CommandCompleter {
     }
 
     /// Handle character input
+    #[allow(dead_code)]
     pub fn insert_char(&mut self, c: char) {
         self.query.push(c);
         self.update_matches();
     }
 
     /// Handle backspace
+    #[allow(dead_code)]
     pub fn backspace(&mut self) {
         self.query.pop();
         self.update_matches();

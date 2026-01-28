@@ -66,7 +66,7 @@ impl Suggestion {
     /// Get the full display text including action hint
     pub fn display_text(&self) -> String {
         match &self.action_hint {
-            Some(hint) => format!("{} ({}", self.text, hint),
+            Some(hint) => format!("{} ({})", self.text, hint),
             None => self.text.clone(),
         }
     }
@@ -218,14 +218,14 @@ impl SuggestionEngine {
     }
 
     /// Check context size and suggest compaction if needed
-    pub fn check_context_size(&mut self, current_tokens: u32, token_limit: u32) {
+    pub fn check_context_size(&mut self, current_tokens: u32) {
         if self.dismissal_tracker.is_dismissed("context_size") {
             return;
         }
 
-        let threshold = (token_limit as f32 * CONTEXT_WARNING_THRESHOLD) as u32;
+        let threshold = (self.token_limit as f32 * CONTEXT_WARNING_THRESHOLD) as u32;
         if current_tokens > threshold {
-            let percentage = (current_tokens as f32 / token_limit as f32 * 100.0) as u32;
+            let percentage = (current_tokens as f32 / self.token_limit as f32 * 100.0) as u32;
             self.set_suggestion(Suggestion::new(
                 "context_size",
                 format!("Context at {}% capacity", percentage),
@@ -237,6 +237,9 @@ impl SuggestionEngine {
 
     /// Check last error and suggest recovery command
     pub fn check_last_error(&mut self, error: &str) {
+        if self.last_error.as_deref() == Some(error) {
+            return;
+        }
         self.last_error = Some(error.to_string());
 
         // Workspace boundary error
@@ -472,6 +475,7 @@ impl SuggestionEngine {
     }
 
     /// Mark a specific suggestion as dismissed
+    #[allow(dead_code)]
     pub fn dismiss(&mut self, id: &str) {
         self.dismissal_tracker.dismiss(id);
         if let Some(current) = &self.current {
@@ -482,11 +486,13 @@ impl SuggestionEngine {
     }
 
     /// Set the auto-hide duration
+    #[allow(dead_code)]
     pub fn set_auto_hide_duration(&mut self, duration: Duration) {
         self.auto_hide_duration = duration;
     }
 
     /// Set the token limit
+    #[allow(dead_code)]
     pub fn set_token_limit(&mut self, limit: u32) {
         self.token_limit = limit;
     }
@@ -531,7 +537,7 @@ mod tests {
         let suggestion = Suggestion::new("test", "Test message")
             .with_action_hint("Press X");
 
-        assert_eq!(suggestion.display_text(), "Test message (Press X");
+        assert_eq!(suggestion.display_text(), "Test message (Press X)");
     }
 
     #[test]
@@ -546,7 +552,7 @@ mod tests {
     #[test]
     fn test_context_size_suggestion() {
         let mut engine = SuggestionEngine::new();
-        engine.check_context_size(150_000, 200_000); // 75% of 200k
+        engine.check_context_size(150_000); // 75% of 200k
 
         let suggestion = engine.current();
         assert!(suggestion.is_some());
@@ -556,7 +562,7 @@ mod tests {
     #[test]
     fn test_context_size_no_suggestion_below_threshold() {
         let mut engine = SuggestionEngine::new();
-        engine.check_context_size(100_000, 200_000); // 50% of 200k
+        engine.check_context_size(100_000); // 50% of 200k
 
         assert!(engine.current().is_none());
     }
@@ -634,14 +640,14 @@ mod tests {
         let mut engine = SuggestionEngine::new();
         engine.set_auto_hide_duration(Duration::from_millis(1));
 
-        engine.check_context_size(150_000, 200_000);
+        engine.check_context_size(150_000);
         assert!(engine.current().is_some());
 
         engine.dismiss_current();
         assert!(engine.current().is_none());
 
         // Immediately trying again should not show
-        engine.check_context_size(160_000, 200_000);
+        engine.check_context_size(160_000);
         assert!(engine.current().is_none());
     }
 

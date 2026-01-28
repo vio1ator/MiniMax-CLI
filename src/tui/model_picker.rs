@@ -9,7 +9,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     prelude::Widget,
-    style::{Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
@@ -108,7 +108,7 @@ impl ModelPicker {
     }
 
     /// Render a model item
-    fn render_model_item(&self, model: &ModelInfo, index: usize) -> ListItem {
+    fn render_model_item(&self, model: &ModelInfo, index: usize) -> ListItem<'_> {
         let is_selected = index == self.selected;
         let is_current = self.is_current_model(model.id);
 
@@ -304,6 +304,7 @@ pub fn validate_model(model_name: &str) -> Option<&'static ModelInfo> {
 }
 
 /// Get the canonical model ID for a model name
+#[allow(dead_code)]
 pub fn resolve_model_id(model_name: &str) -> Option<String> {
     validate_model(model_name).map(|m| m.id.to_string())
 }

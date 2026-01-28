@@ -911,8 +911,6 @@ fn render_message(prefix: &str, content: &str, style: Style, width: u16) -> Vec<
                 
                 // Render highlighted code lines with indentation
                 for code_line in highlighted {
-                    let indent = " ".repeat(prefix_width + 5); // Extra indent for code
-                    let mut indented_spans = vec![Span::raw(indent)];
                     
                     // Wrap the code line if it's too long
                     let line_content: String = code_line

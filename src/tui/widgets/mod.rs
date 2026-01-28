@@ -248,14 +248,6 @@ pub struct ApprovalWidget<'a> {
 }
 
 impl<'a> ApprovalWidget<'a> {
-    pub fn new(request: &'a ApprovalRequest, selected: usize) -> Self {
-        Self {
-            request,
-            selected,
-            params_display: None,
-        }
-    }
-
     pub fn with_expanded(
         request: &'a ApprovalRequest,
         selected: usize,

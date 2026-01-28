@@ -63,6 +63,7 @@ pub trait ModalView {
         false
     }
     /// Returns self as Any for downcasting
+    #[allow(dead_code)]
     fn as_any(&self) -> &dyn std::any::Any;
     /// Returns self as Any for mutable downcasting
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
@@ -87,6 +88,7 @@ impl ViewStack {
     }
 
     /// Get reference to top view as Any for downcasting
+    #[allow(dead_code)]
     pub fn top_as_any(&self) -> Option<&dyn std::any::Any> {
         self.views.last().map(|view| view.as_any())
     }
@@ -314,5 +316,5 @@ impl ModalView for HelpView {
     }
 }
 
-// Re-export search view types
-pub use crate::tui::search_view::{SearchView, SearchResult, render_search_results};
+// Re-export search result type
+pub use crate::tui::search_view::SearchResult;

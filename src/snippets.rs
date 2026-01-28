@@ -210,12 +210,14 @@ impl Default for SnippetRegistry {
 }
 
 /// Get a snippet by name (convenience function that loads defaults)
+#[allow(dead_code)]
 pub fn get_snippet(name: &str) -> Option<Snippet> {
     let registry = SnippetRegistry::load();
     registry.get(name).cloned()
 }
 
 /// List all available snippets (convenience function)
+#[allow(dead_code)]
 pub fn list_snippets() -> Vec<Snippet> {
     let registry = SnippetRegistry::load();
     registry.list().into_iter().cloned().collect()
@@ -254,6 +256,7 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 /// Create default snippets.toml content
+#[allow(dead_code)]
 pub fn default_snippets_toml() -> String {
     r#"[snippets]
 review = { template = "Please review this code for bugs, performance issues, and style improvements:", description = "Code review request" }

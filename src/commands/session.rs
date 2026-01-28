@@ -192,6 +192,9 @@ pub fn reset(app: &mut App) -> CommandResult {
     app.queued_messages.clear();
     app.queued_draft = None;
 
+    // 4b. Clear any active suggestions
+    app.suggestion_engine.clear();
+
     // 5. Reset context/compaction state
     app.session_cost = 0.0;
     app.tool_log.clear();

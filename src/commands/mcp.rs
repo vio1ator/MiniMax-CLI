@@ -45,30 +45,21 @@ pub fn mcp_status(app: &mut App) -> CommandResult {
                 if is_disabled {
                     output.push_str("    Tools: (disabled)\n");
                 } else if is_connected {
-                    // Find the connection to get tools
-                    if let Some(conn) = pool
-                        .connected_servers()
+                    // We can't directly access tools from just the server name,
+                    // but we can get all tools and filter by prefix
+                    let all_tools = pool.all_tools();
+                    let server_tools: Vec<_> = all_tools
                         .iter()
-                        .find(|&&s| s == name.as_str())
-                    {
-                        // We can't directly access tools from just the server name,
-                        // but we can get all tools and filter by prefix
-                        let all_tools = pool.all_tools();
-                        let server_tools: Vec<_> = all_tools
-                            .iter()
-                            .filter(|(full_name, _)| {
-                                full_name.starts_with(&format!("mcp_{}_", name))
-                            })
-                            .map(|(_, tool)| tool.name.as_str())
-                            .collect();
+                        .filter(|(full_name, _)| {
+                            full_name.starts_with(&format!("mcp_{}_", name))
+                        })
+                        .map(|(_, tool)| tool.name.as_str())
+                        .collect();
 
-                        if server_tools.is_empty() {
-                            output.push_str("    Tools: (none discovered)\n");
-                        } else {
-                            output.push_str(&format!("    Tools: {}\n", server_tools.join(", ")));
-                        }
+                    if server_tools.is_empty() {
+                        output.push_str("    Tools: (none discovered)\n");
                     } else {
-                        output.push_str("    Tools: (unavailable)\n");
+                        output.push_str(&format!("    Tools: {}\n", server_tools.join(", ")));
                     }
                 } else {
                     output.push_str("    Tools: (unavailable)\n");

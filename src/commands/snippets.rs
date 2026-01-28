@@ -74,6 +74,7 @@ pub fn insert_snippet(_app: &mut App, name: Option<&str>) -> CommandResult {
 }
 
 /// Get snippet names for tab completion
+#[allow(dead_code)]
 pub fn snippet_names() -> Vec<String> {
     let registry = SnippetRegistry::load();
     registry.list().iter().map(|s| s.name.clone()).collect()

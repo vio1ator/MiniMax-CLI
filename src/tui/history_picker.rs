@@ -9,7 +9,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     prelude::Widget,
-    style::{Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
@@ -210,7 +210,7 @@ impl HistoryPicker {
     }
 
     /// Render a history item
-    fn render_history_item(&self, history_match: &HistoryMatch, index: usize) -> ListItem {
+    fn render_history_item(&self, history_match: &HistoryMatch, index: usize) -> ListItem<'_> {
         let entry = &history_match.entry;
         let is_selected = index == self.selected;
 
@@ -267,7 +267,7 @@ impl HistoryPicker {
         text: &str,
         history_match: &HistoryMatch,
         base_style: Style,
-    ) -> Vec<Span> {
+    ) -> Vec<Span<'_>> {
         let mut spans = Vec::new();
         let chars: Vec<char> = text.chars().collect();
         let mut last_idx = 0;

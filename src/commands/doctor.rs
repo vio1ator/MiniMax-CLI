@@ -59,14 +59,6 @@ impl CheckResult {
         }
     }
 
-    fn error(message: impl Into<String>) -> Self {
-        Self {
-            status: Status::Error,
-            message: message.into(),
-            hint: None,
-        }
-    }
-
     fn error_with_hint(message: impl Into<String>, hint: impl Into<String>) -> Self {
         Self {
             status: Status::Error,

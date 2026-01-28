@@ -7,7 +7,7 @@ use ratatui::{
     Frame,
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
@@ -201,6 +201,7 @@ impl FuzzyPicker {
     }
 
     /// Refresh the indexed paths
+    #[allow(dead_code)]
     pub fn refresh_paths(&mut self, workspace: &Path) {
         self.paths = index_paths(workspace);
         self.update_matches();
@@ -461,6 +462,7 @@ pub fn should_trigger_picker(input: &str, cursor_pos: usize) -> bool {
 }
 
 /// Extract the current query after @ for filtering
+#[allow(dead_code)]
 pub fn extract_query(input: &str, cursor_pos: usize) -> Option<String> {
     let before_cursor = &input[..cursor_pos];
     

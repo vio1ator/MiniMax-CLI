@@ -118,6 +118,7 @@ impl SkillRegistry {
 // === Inline Skill Parsing ===
 
 /// Result of parsing inline skill syntax
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ParsedInlineSkill {
     pub skill_name: String,
@@ -127,6 +128,7 @@ pub struct ParsedInlineSkill {
 /// Parse inline skill syntax: `/skill:name message`
 /// Returns `Some(ParsedInlineSkill)` if input starts with `/skill:`
 /// Returns `None` if no inline skill syntax is detected
+#[allow(dead_code)]
 pub fn parse_inline_skill(input: &str) -> Option<ParsedInlineSkill> {
     let trimmed = input.trim_start();
     
@@ -155,6 +157,7 @@ pub fn parse_inline_skill(input: &str) -> Option<ParsedInlineSkill> {
 }
 
 /// Check if input looks like inline skill syntax (for completion hints)
+#[allow(dead_code)]
 pub fn is_inline_skill_prefix(input: &str) -> bool {
     let trimmed = input.trim_start();
     trimmed.starts_with("/skill:") || trimmed == "/skill" || trimmed.starts_with("/skill ")

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-01-28
+
+### Added
+- Search overlay can now jump to a selected result on Enter
+- Command completer overlay renders live suggestions with command hints
+
+### Changed
+- Error hints display friendly labels in the transcript
+- Suggestion engine tracks input and RLM context, and uses a configurable token limit
+
+### Fixed
+- Search overlay state syncing and selection clamping
+- Number highlighting regex and suggestion display formatting
+- TUI warning cleanup and picker lifetime signatures
+
 ## [0.4.0] - 2026-01-27
 
 ### Added

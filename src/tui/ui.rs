@@ -370,10 +370,8 @@ async fn run_event_loop(
                         let turn_tokens = usage.input_tokens + usage.output_tokens;
                         app.total_tokens = app.total_tokens.saturating_add(turn_tokens);
                         app.recalculate_context_tokens();
-                        app.suggestion_engine.check_context_size(
-                            app.total_conversation_tokens,
-                            200_000, // Default token limit
-                        );
+                        app.suggestion_engine
+                            .check_context_size(app.total_conversation_tokens);
                         app.last_prompt_tokens = Some(usage.input_tokens);
                         app.last_completion_tokens = Some(usage.output_tokens);
                         app.last_usage_at = Some(Instant::now());
@@ -425,8 +423,17 @@ async fn run_event_loop(
                         }
                     }
                     EngineEvent::Error { message, hint, .. } => {
-                        let suggestion = hint.map(|h| h.suggestion);
-                        app.add_message(HistoryCell::Error { message, suggestion });
+                        app.suggestion_engine.check_last_error(&message);
+                        let (display_message, suggestion) = if let Some(hint) = hint {
+                            let display = format!("{} ({})", hint.message, hint.error_type.label());
+                            (display, Some(hint.suggestion))
+                        } else {
+                            (message, None)
+                        };
+                        app.add_message(HistoryCell::Error {
+                            message: display_message,
+                            suggestion,
+                        });
                         app.is_loading = false;
                     }
                     EngineEvent::SessionUpdated {
@@ -536,6 +543,16 @@ async fn run_event_loop(
 
         // Check YOLO mode warning
         app.suggestion_engine.check_yolo_mode(app.mode == AppMode::Yolo);
+
+        // RLM context hint
+        let has_rlm_context = app
+            .rlm_session
+            .lock()
+            .ok()
+            .map(|session| !session.contexts.is_empty())
+            .unwrap_or(false);
+        app.suggestion_engine
+            .check_rlm_context(has_rlm_context, app.mode == AppMode::Rlm || app.rlm_repl_active);
 
         terminal.draw(|f| render(f, app))?; // app is &mut
 
@@ -854,50 +871,6 @@ async fn run_event_loop(
                                     AppAction::OpenHistoryPicker => {
                                         app.view_stack.push(crate::tui::history_picker::HistoryPicker::new(&app.input_history));
                                     }
-                                    AppAction::SwitchSession { session_id } => {
-                                        app.add_message(HistoryCell::System {
-                                            content: format!("Switching to session: {}", &session_id[..8.min(session_id.len())]),
-                                        });
-                                    }
-                                    AppAction::ResumeSession(session_id) => {
-                                        // Load the session from the session manager
-                                        if let Ok(manager) = crate::session_manager::SessionManager::default_location() {
-                                            if let Ok(session) = manager.load_session(&session_id) {
-                                                app.api_messages.clone_from(&session.messages);
-                                                app.history.clear();
-                                                for msg in &app.api_messages {
-                                                    app.history.extend(history_cells_from_message(msg));
-                                                }
-                                                app.mark_history_updated();
-                                                app.transcript_selection.clear();
-                                                app.model.clone_from(&session.metadata.model);
-                                                app.workspace.clone_from(&session.metadata.workspace);
-                                                app.total_tokens = u32::try_from(session.metadata.total_tokens).unwrap_or(u32::MAX);
-                                                app.current_session_id = Some(session.metadata.id.clone());
-                                                if let Some(sp) = session.system_prompt {
-                                                    app.system_prompt = Some(crate::models::SystemPrompt::Text(sp));
-                                                }
-                                                app.recalculate_context_tokens();
-                                                app.scroll_to_bottom();
-                                                
-                                                // Sync with the engine
-                                                let _ = engine_handle.send(Op::SyncSession {
-                                                    messages: app.api_messages.clone(),
-                                                    system_prompt: app.system_prompt.clone(),
-                                                    model: app.model.clone(),
-                                                    workspace: app.workspace.clone(),
-                                                }).await;
-                                                
-                                                app.add_message(HistoryCell::System {
-                                                    content: format!("Resumed session {} ({} messages)", &session_id[..8], app.api_messages.len()),
-                                                });
-                                            } else {
-                                                app.add_message(HistoryCell::System {
-                                                    content: format!("Failed to load session: {}", &session_id[..8]),
-                                                });
-                                            }
-                                        }
-                                    }
                                     AppAction::ReloadConfig => {
                                         // Reload configuration from disk
                                         let profile = std::env::var("MINIMAX_PROFILE").ok();
@@ -1104,23 +1077,35 @@ async fn run_event_loop(
                     if c == '@' && fuzzy_picker::should_trigger_picker(&app.input, app.cursor_position) {
                         app.insert_char(c);
                         app.fuzzy_picker.activate(&app.input, app.cursor_position);
-                    } else if c == '/' && app.input.is_empty() {
-                        // Trigger command completer when '/' is typed at start of input
-                        app.insert_char(c);
-                        app.command_completer = Some(CommandCompleter::new());
-                        if let Some(ref mut completer) = app.command_completer {
-                            completer.activate(&app.input);
-                        }
                     } else {
                         app.insert_char(c);
                         // Check for file-related patterns
                         app.suggestion_engine.check_input_pattern(&app.input);
-                        // Update command completer if active and input starts with '/'
+
                         if app.input.starts_with('/') {
-                            if let Some(ref mut completer) = app.command_completer {
-                                if completer.is_active() {
-                                    completer.update_query(&app.input);
+                            let should_show = crate::tui::command_completer::should_trigger_completer(
+                                &app.input,
+                                app.cursor_position,
+                            );
+                            if should_show {
+                                if app.command_completer.is_none() {
+                                    app.command_completer = Some(CommandCompleter::new());
                                 }
+                                if let Some(ref mut completer) = app.command_completer {
+                                    if completer.is_active() {
+                                        completer.update_query(&app.input);
+                                    } else {
+                                        completer.activate(&app.input);
+                                    }
+                                }
+                            } else if let Some(ref mut completer) = app.command_completer {
+                                if completer.is_active() {
+                                    completer.deactivate();
+                                }
+                            }
+                        } else if let Some(ref mut completer) = app.command_completer {
+                            if completer.is_active() {
+                                completer.deactivate();
                             }
                         }
                     }
@@ -1268,6 +1253,7 @@ async fn dispatch_user_message(
     engine_handle: &EngineHandle,
     message: QueuedMessage,
 ) -> Result<()> {
+    app.suggestion_engine.record_input(&message.display);
     let override_query = maybe_auto_switch_to_rlm(app, &message.display);
     let content = if let Some(query) = override_query.as_deref() {
         message.content_with_query(query)
@@ -1981,34 +1967,42 @@ fn render(f: &mut Frame, app: &mut App) {
         
         // Check if top view is search - if so, perform search and render results
         if app.view_stack.top_kind() == Some(ModalKind::Search) {
-            // Get search view reference and perform search
-            let search_result = if let Some(any_view) = app.view_stack.top_as_any() {
-                if let Some(search_view) = any_view.downcast_ref::<SearchView>() {
-                    app.search_results = search_view.search(&app.history);
-                    app.current_search_idx = if app.search_results.is_empty() {
+            let mut handled = false;
+            let mut results = Vec::new();
+            let mut selected = None;
+
+            if let Some(any_view) = app.view_stack.top_as_any_mut() {
+                if let Some(search_view) = any_view.downcast_mut::<SearchView>() {
+                    results = search_view.search(&app.history);
+                    selected = if results.is_empty() {
                         None
                     } else {
                         Some(search_view.selected_idx())
                     };
-                    
+
                     // Render the search view base
                     search_view.render(size, buf);
-                    
+
                     // Render search results overlay
-                    render_search_results(size, buf, search_view, &app.search_results, app.current_search_idx);
-                    true
-                } else {
-                    false
+                    render_search_results(size, buf, search_view, &results, selected);
+                    handled = true;
                 }
+            }
+
+            if handled {
+                app.search_results = results;
+                app.current_search_idx = selected;
             } else {
-                false
-            };
-            
-            if !search_result {
                 app.view_stack.render(size, buf);
             }
         } else {
             app.view_stack.render(size, buf);
+        }
+    }
+
+    if let Some(completer) = app.command_completer.as_ref() {
+        if completer.is_active() {
+            crate::tui::command_completer::render(f, completer, size);
         }
     }
 
@@ -2487,11 +2481,7 @@ fn render_command_footer(f: &mut Frame, area: Rect, app: &App) {
 
     // Render suggestion if present (dim color, 💡 icon)
     if let Some(suggestion) = app.suggestion_engine.current() {
-        let suggestion_text = if let Some(ref hint) = suggestion.action_hint {
-            format!("💡 {} ({})", suggestion.text, hint)
-        } else {
-            format!("💡 {}", suggestion.text)
-        };
+        let suggestion_text = format!("💡 {}", suggestion.display_text());
         let span = Span::styled(
             suggestion_text,
             Style::default().fg(palette::TEXT_DIM),
@@ -2546,6 +2536,13 @@ fn get_contextual_hint(app: &App) -> Option<String> {
             AppMode::Rlm => return Some("Tab: cycle modes".to_string()),
             AppMode::Duo => return Some("Tab: cycle modes".to_string()),
             AppMode::Plan => return Some("Tab: cycle modes".to_string()),
+        }
+    }
+
+    // Command-specific hints
+    if app.input.starts_with('/') {
+        if let Some(hint) = crate::tui::command_completer::get_command_hint(&app.input) {
+            return Some(hint.to_string());
         }
     }
 

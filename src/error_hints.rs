@@ -20,8 +20,6 @@ pub enum ErrorType {
     FileNotFound,
     /// Permission denied
     PermissionDenied,
-    /// Generic/unknown error
-    Generic,
 }
 
 /// A hint containing an error type, message, and suggested fix.
@@ -46,10 +44,19 @@ impl ErrorHint {
         }
     }
 
-    /// Format the hint as a display string with the suggestion.
-    #[must_use]
-    pub fn format_with_suggestion(&self) -> String {
-        format!("{}\n\nTry: {}", self.message, self.suggestion)
+}
+
+impl ErrorType {
+    pub const fn label(self) -> &'static str {
+        match self {
+            ErrorType::RateLimit => "rate limit",
+            ErrorType::InvalidApiKey => "auth",
+            ErrorType::NetworkError => "network",
+            ErrorType::ContextTooLong => "context",
+            ErrorType::ToolExecutionError => "tool",
+            ErrorType::FileNotFound => "file",
+            ErrorType::PermissionDenied => "permission",
+        }
     }
 }
 

@@ -588,6 +588,9 @@ impl App {
     pub fn set_mode(&mut self, mode: AppMode) {
         let previous_mode = self.mode;
         self.mode = mode;
+        if let Some(ref mut completer) = self.command_completer {
+            completer.set_mode(mode);
+        }
         self.status_message = Some(format!("Switched to {} mode", mode.label()));
         self.allow_shell = true;
         self.trust_mode = matches!(mode, AppMode::Yolo);
@@ -1188,10 +1191,6 @@ pub enum AppAction {
     OpenModelPicker,
     /// Open the command history picker modal
     OpenHistoryPicker,
-    /// Switch to a different session
-    SwitchSession { session_id: String },
-    /// Resume a session from the session picker
-    ResumeSession(String),
     /// Reload configuration from disk
     ReloadConfig,
     /// Set the input text (for snippet insertion)

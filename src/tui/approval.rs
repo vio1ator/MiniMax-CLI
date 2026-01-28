@@ -5,7 +5,7 @@
 
 use crate::pricing::CostEstimate;
 use crate::tui::views::{ModalKind, ModalView, ViewAction, ViewEvent};
-use crate::tui::widgets::{ApprovalWidget, Renderable};
+use crate::tui::widgets::Renderable;
 use crossterm::event::{KeyCode, KeyEvent};
 use serde_json::Value;
 use std::time::{Duration, Instant};
@@ -148,10 +148,6 @@ impl ApprovalView {
             requested_at: Instant::now(),
             expanded: false,
         }
-    }
-
-    pub fn is_expanded(&self) -> bool {
-        self.expanded
     }
 
     fn toggle_expanded(&mut self) {

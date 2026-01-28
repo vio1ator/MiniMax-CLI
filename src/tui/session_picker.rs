@@ -10,7 +10,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Rect},
     prelude::Widget,
-    style::{Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
@@ -183,7 +183,7 @@ impl SessionPicker {
     }
 
     /// Render a session item
-    fn render_session_item(&self, session_match: &SessionMatch, index: usize) -> ListItem {
+    fn render_session_item(&self, session_match: &SessionMatch, index: usize) -> ListItem<'_> {
         let meta = &session_match.metadata;
         let is_selected = index == self.selected;
         let is_current = self.is_current_session(&meta.id);
@@ -278,7 +278,7 @@ impl SessionPicker {
         title: &str,
         session_match: &SessionMatch,
         base_style: Style,
-    ) -> Vec<Span> {
+    ) -> Vec<Span<'_>> {
         let mut spans = Vec::new();
         let chars: Vec<char> = title.chars().collect();
         let mut last_idx = 0;

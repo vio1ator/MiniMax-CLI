@@ -39,6 +39,7 @@ pub struct SearchView {
     regex_mode: bool,
     selected_idx: usize,
     scroll_offset: usize,
+    last_results: Vec<SearchResult>,
 }
 
 impl SearchView {
@@ -53,6 +54,7 @@ impl SearchView {
             regex_mode: false,
             selected_idx: 0,
             scroll_offset: 0,
+            last_results: Vec::new(),
         }
     }
 
@@ -77,8 +79,9 @@ impl SearchView {
     }
 
     /// Search through history cells and return results
-    pub fn search(&self, history: &[HistoryCell]) -> Vec<SearchResult> {
+    pub fn search(&mut self, history: &[HistoryCell]) -> Vec<SearchResult> {
         if self.query.is_empty() {
+            self.last_results.clear();
             return Vec::new();
         }
 
@@ -166,6 +169,15 @@ impl SearchView {
             }
         }
 
+        if results.is_empty() {
+            self.selected_idx = 0;
+            self.scroll_offset = 0;
+        } else if self.selected_idx >= results.len() {
+            self.selected_idx = results.len().saturating_sub(1);
+            self.adjust_scroll(results.len());
+        }
+
+        self.last_results = results.clone();
         results
     }
 
@@ -222,11 +234,6 @@ impl SearchView {
         }
     }
 
-    /// Set the selected index directly
-    pub fn set_selected_idx(&mut self, idx: usize) {
-        self.selected_idx = idx;
-    }
-
     /// Adjust scroll offset to keep selected item visible
     fn adjust_scroll(&mut self, total_results: usize) {
         const VISIBLE_ITEMS: usize = 8;
@@ -258,58 +265,68 @@ impl ModalView for SearchView {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> ViewAction {
+        let total_results = self.last_results.len();
         match key.code {
             KeyCode::Esc => ViewAction::Close,
             KeyCode::Enter => {
-                // Return selected result
-                ViewAction::Close
+                if let Some(result) = self.last_results.get(self.selected_idx).cloned() {
+                    ViewAction::EmitAndClose(crate::tui::views::ViewEvent::SearchResultSelected {
+                        result,
+                    })
+                } else {
+                    ViewAction::Close
+                }
             }
             KeyCode::Up => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.prev_result(0); // Will be called with actual count in render
+                    self.prev_result(total_results);
                 } else {
-                    self.prev_result(usize::MAX);
+                    self.prev_result(total_results);
                 }
                 ViewAction::None
             }
             KeyCode::Down => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.next_result(0);
+                    self.next_result(total_results);
                 } else {
-                    self.next_result(usize::MAX);
+                    self.next_result(total_results);
                 }
                 ViewAction::None
             }
             KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.next_result(usize::MAX);
+                self.next_result(total_results);
                 ViewAction::None
             }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.prev_result(usize::MAX);
+                self.prev_result(total_results);
                 ViewAction::None
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.case_sensitive = !self.case_sensitive;
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.regex_mode = !self.regex_mode;
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             KeyCode::Char('c') if key.modifiers.is_empty() => {
                 self.case_sensitive = !self.case_sensitive;
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             KeyCode::Char('r') if key.modifiers.is_empty() => {
                 self.regex_mode = !self.regex_mode;
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             KeyCode::Backspace => {
@@ -323,6 +340,7 @@ impl ModalView for SearchView {
                 }
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             KeyCode::Char(c) => {
@@ -334,6 +352,7 @@ impl ModalView for SearchView {
                 self.cursor_position += 1;
                 self.selected_idx = 0;
                 self.scroll_offset = 0;
+                self.last_results.clear();
                 ViewAction::None
             }
             _ => ViewAction::None,
@@ -384,12 +403,12 @@ impl ModalView for SearchView {
         .render(chunks[0], buf);
 
         // Options bar
-        let case_style = if self.case_sensitive {
+        let case_style = if self.case_sensitive() {
             Style::default().fg(palette::MINIMAX_GREEN).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_MUTED)
         };
-        let regex_style = if self.regex_mode {
+        let regex_style = if self.regex_mode() {
             Style::default().fg(palette::MINIMAX_GREEN).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_MUTED)

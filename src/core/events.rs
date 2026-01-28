@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use crate::error_hints::ErrorHint;
+use crate::error_hints::{ErrorHint, is_recoverable};
 use crate::models::{Message, SystemPrompt, Usage};
 use crate::tools::spec::{ToolError, ToolResult};
 use crate::tools::subagent::SubAgentResult;
@@ -105,6 +105,7 @@ impl Event {
     /// Create a new error event
     pub fn error(message: impl Into<String>, recoverable: bool) -> Self {
         let message = message.into();
+        let recoverable = recoverable || is_recoverable(&message);
         let hint = crate::error_hints::get_error_hint(&message);
         Event::Error {
             message,

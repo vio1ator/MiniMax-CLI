@@ -362,6 +362,7 @@ fn get_keywords_and_types(lang: Language) -> (Vec<&'static str>, Vec<&'static st
 /// Extract code blocks from markdown text.
 /// Returns a vector of (is_code_block, text) tuples.
 /// For code blocks, the text includes the language identifier on the first line.
+#[allow(dead_code)]
 pub fn extract_code_blocks(text: &str) -> Vec<(bool, String)> {
     let mut result = Vec::new();
     let lines: Vec<&str> = text.lines().collect();
