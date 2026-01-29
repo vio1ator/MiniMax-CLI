@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Search overlay state syncing and selection clamping
 - Number highlighting regex and suggestion display formatting
 - TUI warning cleanup and picker lifetime signatures
+- Consolidated duplicate auto-compaction paths that ran with conflicting settings
+- ESC key now clears queued draft when cancelling a loading request
+- /retry command now queues messages when engine is busy instead of bypassing queue
+- Context % meter now recalculates after user messages, estimates tool tokens, and supports MiniMax-Text-01/Coding-01 models
 
 ## [0.4.0] - 2026-01-27
 
@@ -155,7 +159,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hooks system and config profiles
 - Example skills and launch assets
 
-[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Hmbown/MiniMax-CLI/compare/v0.2.1...v0.2.2

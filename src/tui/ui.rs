@@ -796,6 +796,7 @@ async fn run_event_loop(
                     } else if app.is_loading {
                         engine_handle.cancel();
                         app.is_loading = false;
+                        app.queued_draft = None;
                         app.status_message = Some("Request cancelled".to_string());
                     } else if !app.input.is_empty() {
                         app.clear_input();
@@ -871,7 +872,16 @@ async fn run_event_loop(
                                     }
                                     AppAction::SendMessage(content) => {
                                         let queued = build_queued_message(app, content);
-                                        dispatch_user_message(app, &engine_handle, queued).await?;
+                                        if app.is_loading {
+                                            app.queue_message(queued);
+                                            app.status_message = Some(format!(
+                                                "Queued retry message ({} in queue)",
+                                                app.queued_message_count()
+                                            ));
+                                        } else {
+                                            dispatch_user_message(app, &engine_handle, queued)
+                                                .await?;
+                                        }
                                     }
                                     AppAction::ListSubAgents => {
                                         let _ = engine_handle.send(Op::ListSubAgents).await;
@@ -1337,6 +1347,7 @@ async fn dispatch_user_message(
             cache_control: None,
         }],
     });
+    app.recalculate_context_tokens();
 
     engine_handle
         .send(Op::SendMessage {

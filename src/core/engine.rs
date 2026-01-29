@@ -986,49 +986,54 @@ impl Engine {
                 break;
             }
 
-            // Check for auto-compaction before sending request
-            if self.config.auto_compact {
-                self.maybe_auto_compact(&client).await;
-            }
-
             // Check for context compaction (if conversation is getting long)
-            let compaction_config = CompactionConfig::default();
-            let (messages_for_request, system_for_request, was_compacted) = maybe_compact(
-                &client,
-                &self.session.messages,
-                &self.session.system_prompt,
-                &tools,
-                &compaction_config,
-            )
-            .await
-            .unwrap_or_else(|e| {
-                logging::warn(format!("Compaction failed: {e}"));
+            // Only compact if auto_compact is enabled in config
+            let (messages_for_request, system_for_request) = if self.config.auto_compact {
+                let compaction_config = CompactionConfig::default();
+                match maybe_compact(
+                    &client,
+                    &self.session.messages,
+                    &self.session.system_prompt,
+                    &tools,
+                    &compaction_config,
+                )
+                .await
+                {
+                    Ok((messages, system, was_compacted)) => {
+                        if was_compacted {
+                            // Persist compaction so we don't re-summarize every turn.
+                            self.session.messages = messages.clone();
+                            self.session.system_prompt = system.clone();
+
+                            let _ = self
+                                .tx_event
+                                .send(Event::SessionUpdated {
+                                    messages: self.session.messages.clone(),
+                                    system_prompt: self.session.system_prompt.clone(),
+                                })
+                                .await;
+
+                            let _ = self
+                                .tx_event
+                                .send(Event::status("Context compacted for longer conversation"))
+                                .await;
+                        }
+                        (messages, system)
+                    }
+                    Err(e) => {
+                        logging::warn(format!("Compaction failed: {e}"));
+                        (
+                            self.session.messages.clone(),
+                            self.session.system_prompt.clone(),
+                        )
+                    }
+                }
+            } else {
                 (
                     self.session.messages.clone(),
                     self.session.system_prompt.clone(),
-                    false,
                 )
-            });
-
-            // Emit compaction event if it happened
-            if was_compacted {
-                // Persist compaction so we don't re-summarize every turn.
-                self.session.messages = messages_for_request.clone();
-                self.session.system_prompt = system_for_request.clone();
-
-                let _ = self
-                    .tx_event
-                    .send(Event::SessionUpdated {
-                        messages: self.session.messages.clone(),
-                        system_prompt: self.session.system_prompt.clone(),
-                    })
-                    .await;
-
-                let _ = self
-                    .tx_event
-                    .send(Event::status("Context compacted for longer conversation"))
-                    .await;
-            }
+            };
 
             // Apply prompt caching to system prompt and tools
             let cached_system =
@@ -1519,82 +1524,6 @@ impl Engine {
             }
 
             turn.next_step();
-        }
-    }
-
-    /// Check if auto-compaction is needed and trigger it.
-    /// Thresholds: 80K tokens OR 30 messages.
-    async fn maybe_auto_compact(&mut self, client: &AnthropicClient) {
-        use crate::compaction::{estimate_request_tokens, estimate_tokens};
-
-        const TOKEN_THRESHOLD: usize = 80_000;
-        const MESSAGE_THRESHOLD: usize = 30;
-
-        let token_estimate = estimate_tokens(&self.session.messages);
-        let message_count = self.session.messages.len();
-
-        let should_compact = token_estimate > TOKEN_THRESHOLD || message_count > MESSAGE_THRESHOLD;
-
-        if !should_compact {
-            return;
-        }
-
-        // Log and notify user that auto-compaction is starting
-        let total_estimate = estimate_request_tokens(
-            &self.session.messages,
-            &self.session.system_prompt,
-            &None, // Tools not included in auto-compact check
-        );
-        logging::info(format!(
-            "Auto-compaction triggered: {} estimated tokens, {} messages",
-            total_estimate, message_count
-        ));
-        let _ = self
-            .tx_event
-            .send(Event::status(
-                "Auto-compacting context due to size...".to_string(),
-            ))
-            .await;
-
-        // Trigger compaction using existing logic
-        let config = crate::compaction::CompactionConfig {
-            model: self.session.model.clone(),
-            keep_recent: 4,
-            ..crate::compaction::CompactionConfig::default()
-        };
-
-        if self.session.messages.len() <= config.keep_recent {
-            return;
-        }
-
-        match crate::compaction::compact_messages(client, &self.session.messages, &config).await {
-            Ok((messages, summary_prompt)) => {
-                let merged_system = crate::compaction::merge_system_prompts(
-                    self.session.system_prompt.as_ref(),
-                    summary_prompt,
-                );
-
-                self.session.messages = messages;
-                self.session.system_prompt = merged_system;
-
-                let _ = self
-                    .tx_event
-                    .send(Event::SessionUpdated {
-                        messages: self.session.messages.clone(),
-                        system_prompt: self.session.system_prompt.clone(),
-                    })
-                    .await;
-
-                let _ = self
-                    .tx_event
-                    .send(Event::status(
-                        "Context auto-compacted successfully".to_string(),
-                    ))
-                    .await;
-            }
-            Err(err) => {
-                logging::warn(format!("Auto-compaction failed: {err}"));
-            }
         }
     }
 

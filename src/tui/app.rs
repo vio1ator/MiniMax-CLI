@@ -684,13 +684,44 @@ impl App {
 
     /// Recalculate estimated tokens currently in context for the header meter.
     pub fn recalculate_context_tokens(&mut self) {
-        let tools: Option<Vec<crate::models::Tool>> = None;
-        let estimated = crate::compaction::estimate_request_tokens(
-            &self.api_messages,
-            &self.system_prompt,
-            &tools,
-        );
-        self.total_conversation_tokens = u32::try_from(estimated).unwrap_or(u32::MAX);
+        let tool_tokens = self.estimate_tool_tokens();
+        let msg_tokens = crate::compaction::estimate_tokens(&self.api_messages);
+        let sys_tokens = crate::compaction::estimate_system_tokens(&self.system_prompt);
+        let total = msg_tokens + sys_tokens + tool_tokens;
+        self.total_conversation_tokens = u32::try_from(total).unwrap_or(u32::MAX);
+    }
+
+    /// Estimate tokens for tools based on current mode and settings.
+    /// Returns an approximate token count for the tools that would be sent.
+    fn estimate_tool_tokens(&self) -> usize {
+        // Base token estimate per tool (~150 tokens average based on typical tool size)
+        const TOKENS_PER_TOOL: usize = 150;
+
+        let tool_count = match self.mode {
+            AppMode::Normal => 0,
+            AppMode::Plan => 8, // plan mode has fewer tools (file, search, todo, plan, note, web, patch)
+            AppMode::Agent => {
+                // file(4) + search(1) + todo(1) + plan(1) + note(1) + web(1) + patch(1) + subagent(1) = 11
+                let base = 11;
+                if self.allow_shell { base + 3 } else { base }
+            }
+            AppMode::Yolo => {
+                let base = 11;
+                if self.allow_shell { base + 3 } else { base }
+            }
+            AppMode::Rlm => {
+                // base(11) + 4 RLM tools + subagent(1) = 16
+                let base = 16;
+                if self.allow_shell { base + 3 } else { base }
+            }
+            AppMode::Duo => {
+                // base(11) + 2 duo tools + subagent(1) = 14
+                let base = 14;
+                if self.allow_shell { base + 3 } else { base }
+            }
+        };
+
+        tool_count * TOKENS_PER_TOOL
     }
 
     pub fn add_message(&mut self, msg: HistoryCell) {
