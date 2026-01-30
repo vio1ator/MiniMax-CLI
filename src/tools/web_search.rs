@@ -139,6 +139,79 @@ impl ToolSpec for WebSearchTool {
     }
 }
 
+// === WebFetchTool ===
+
+pub struct WebFetchTool;
+
+#[async_trait]
+impl ToolSpec for WebFetchTool {
+    fn name(&self) -> &'static str {
+        "web_fetch"
+    }
+
+    fn description(&self) -> &'static str {
+        "Fetch the content of a specific URL and return the raw text (stripped of HTML tags)."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to fetch"
+                }
+            },
+            "required": ["url"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::ReadOnly, ToolCapability::Network]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    fn supports_parallel(&self) -> bool {
+        true
+    }
+
+    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let url = required_str(&input, "url")?;
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent(USER_AGENT)
+            .build()
+            .map_err(|e| {
+                ToolError::execution_failed(format!("Failed to build HTTP client: {e}"))
+            })?;
+
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Request failed: {e}")))?;
+
+        let status = resp.status();
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Failed to read response: {e}")))?;
+
+        if !status.is_success() {
+            return Err(ToolError::execution_failed(format!(
+                "Fetch failed: HTTP {status}"
+            )));
+        }
+
+        let clean_text = normalize_text(&body);
+        Ok(ToolResult::success(clean_text))
+    }
+}
+
 fn parse_duckduckgo_results(html: &str, max_results: usize) -> Vec<WebSearchEntry> {
     let title_re =
         Regex::new(r#"<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#).unwrap();

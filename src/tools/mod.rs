@@ -4,15 +4,21 @@
 
 // === Modules ===
 
+pub mod artifact;
 pub mod coding;
 pub mod duo;
+pub mod execution;
 pub mod file;
+pub mod git;
+pub mod investigator;
+pub mod memory;
 pub mod minimax;
 pub mod patch;
 pub mod plan;
 pub mod registry;
 pub mod rlm;
 pub mod search;
+pub mod security;
 pub mod shell;
 pub mod spec;
 pub mod subagent;
@@ -26,6 +32,21 @@ pub use spec::ToolContext;
 
 // Re-export coding tools
 pub use coding::{CodingCompleteTool, CodingReviewTool};
+
+// Re-export git tools
+pub use git::{GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitStatusTool};
+
+// Re-export memory tools
+pub use memory::{GetMemoryTool, SaveMemoryTool};
+
+// Re-export artifact tools
+pub use artifact::{ArtifactCreateTool, ArtifactListTool};
+
+// Re-export execution tools
+pub use execution::ExecPythonTool;
+
+// Re-export investigator tools
+pub use investigator::CodebaseInvestigatorTool;
 
 // Re-export minimax tools
 pub use minimax::{
@@ -42,7 +63,7 @@ pub use registry::{ToolRegistry, ToolRegistryBuilder};
 pub use search::GrepFilesTool;
 
 // Re-export web search tools
-pub use web_search::WebSearchTool;
+pub use web_search::{WebFetchTool, WebSearchTool};
 
 // Re-export patch tools
 pub use patch::ApplyPatchTool;

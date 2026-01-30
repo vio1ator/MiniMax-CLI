@@ -78,6 +78,8 @@ pub struct EngineConfig {
     pub rlm_session: SharedRlmSession,
     /// Shared Duo session state.
     pub duo_session: SharedDuoSession,
+    /// Path to user memory file.
+    pub memory_path: PathBuf,
     /// Enable prompt caching for system prompts
     pub cache_system: bool,
     /// Enable prompt caching for tools
@@ -102,6 +104,7 @@ impl Default for EngineConfig {
             plan_state: new_shared_plan_state(),
             rlm_session: Arc::new(Mutex::new(RlmSession::default())),
             duo_session: Arc::new(Mutex::new(DuoSession::new())),
+            memory_path: PathBuf::from("memory.json"),
             cache_system: true,  // Enable by default
             cache_tools: true,   // Enable by default
             auto_compact: false, // Disabled by default
@@ -691,7 +694,11 @@ impl Engine {
             .with_search_tools()
             .with_todo_tool(todo_list.clone())
             .with_plan_tool(plan_state.clone())
-            .with_minimax_tools();
+            .with_minimax_tools()
+            .with_git_tools()
+            .with_artifact_tools()
+            .with_execution_tools()
+            .with_memory_tools(self.config.memory_path.clone());
 
         if self.config.features.enabled(Feature::ApplyPatch) {
             builder = builder.with_patch_tools();
@@ -702,6 +709,24 @@ impl Engine {
         if self.config.features.enabled(Feature::ShellTool) && self.session.allow_shell {
             builder = builder.with_shell_tools();
         }
+
+        let runtime = if let Some(client) = self.anthropic_client.clone() {
+            Some(SubAgentRuntime::new(
+                client,
+                self.session.model.clone(),
+                tool_context.clone(),
+                self.session.allow_shell,
+                Some(self.tx_event.clone()),
+            ))
+        } else {
+            None
+        };
+
+        if let Some(rt) = runtime.as_ref() {
+            builder = builder.with_investigator_tool(self.subagent_manager.clone(), rt.clone());
+            builder = builder.with_security_tool(self.subagent_manager.clone(), rt.clone());
+        }
+
         if mode == AppMode::Rlm {
             if self.config.features.enabled(Feature::Rlm) {
                 builder = builder.with_rlm_tools(

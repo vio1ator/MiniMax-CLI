@@ -65,6 +65,10 @@ impl ToolSpec for GitDiffTool {
         vec![ToolCapability::ReadOnly]
     }
 
+    fn supports_parallel(&self) -> bool {
+        true
+    }
+
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         if !is_git_repo(&context.workspace) {
             return Ok(ToolResult::error("Not a git repository"));
@@ -73,50 +77,50 @@ impl ToolSpec for GitDiffTool {
         let target = optional_str(&input, "target").unwrap_or("all");
         let path = optional_str(&input, "path");
 
-        let output = match target.as_str() {
+        let output = match target {
             "staged" => {
                 let mut args = vec!["diff", "--cached"];
                 if let Some(p) = path {
-                    args.push(&p);
+                    args.push(p);
                 }
                 run_git(&args, &context.workspace)
             }
             "unstaged" => {
                 let mut args = vec!["diff"];
                 if let Some(p) = path {
-                    args.push(&p);
+                    args.push(p);
                 }
                 run_git(&args, &context.workspace)
             }
-            "all" | _ => {
+            _ => {
                 let mut output = String::new();
-                
+
                 // Unstaged changes
-                let unstaged = if let Some(p) = &path {
+                let unstaged = if let Some(p) = path {
                     run_git(&["diff", p], &context.workspace)
                 } else {
                     run_git(&["diff"], &context.workspace)
                 };
-                if let Ok(diff) = unstaged {
-                    if !diff.is_empty() {
-                        output.push_str("=== Unstaged Changes ===\n");
-                        output.push_str(&diff);
-                        output.push('\n');
-                    }
+                if let Ok(diff) = unstaged
+                    && !diff.is_empty()
+                {
+                    output.push_str("=== Unstaged Changes ===\n");
+                    output.push_str(&diff);
+                    output.push('\n');
                 }
 
                 // Staged changes
-                let staged = if let Some(p) = &path {
+                let staged = if let Some(p) = path {
                     run_git(&["diff", "--cached", p], &context.workspace)
                 } else {
                     run_git(&["diff", "--cached"], &context.workspace)
                 };
-                if let Ok(diff) = staged {
-                    if !diff.is_empty() {
-                        output.push_str("=== Staged Changes ===\n");
-                        output.push_str(&diff);
-                        output.push('\n');
-                    }
+                if let Ok(diff) = staged
+                    && !diff.is_empty()
+                {
+                    output.push_str("=== Staged Changes ===\n");
+                    output.push_str(&diff);
+                    output.push('\n');
                 }
 
                 if output.is_empty() {
@@ -161,6 +165,10 @@ impl ToolSpec for GitStatusTool {
         vec![ToolCapability::ReadOnly]
     }
 
+    fn supports_parallel(&self) -> bool {
+        true
+    }
+
     async fn execute(&self, _input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         if !is_git_repo(&context.workspace) {
             return Ok(ToolResult::error("Not a git repository"));
@@ -188,12 +196,9 @@ impl ToolSpec for GitStatusTool {
         }
 
         // Recent commits
-        match run_git(&["log", "--oneline", "-5"], &context.workspace) {
-            Ok(log) => {
-                output.push_str("\nRecent commits:\n");
-                output.push_str(&log);
-            }
-            Err(_) => {} // Silently ignore
+        if let Ok(log) = run_git(&["log", "--oneline", "-5"], &context.workspace) {
+            output.push_str("\nRecent commits:\n");
+            output.push_str(&log);
         }
 
         Ok(ToolResult::success(output))
@@ -246,15 +251,14 @@ impl ToolSpec for GitCommitTool {
         }
 
         let message = required_str(&input, "message")?;
-        let stage_all = input.get("stage_all")
+        let stage_all = input
+            .get("stage_all")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Stage all if requested
-        if stage_all {
-            if let Err(e) = run_git(&["add", "-A"], &context.workspace) {
-                return Ok(ToolResult::error(format!("Failed to stage changes: {e}")));
-            }
+        if stage_all && let Err(e) = run_git(&["add", "-A"], &context.workspace) {
+            return Ok(ToolResult::error(format!("Failed to stage changes: {e}")));
         }
 
         // Create commit
@@ -301,22 +305,27 @@ impl ToolSpec for GitLogTool {
         vec![ToolCapability::ReadOnly]
     }
 
+    fn supports_parallel(&self) -> bool {
+        true
+    }
+
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         if !is_git_repo(&context.workspace) {
             return Ok(ToolResult::error("Not a git repository"));
         }
 
-        let limit = input.get("limit")
+        let limit = input
+            .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10)
-            .max(1)
-            .min(100);
+            .clamp(1, 100);
         let path = optional_str(&input, "path");
 
-        let mut args = vec!["log", "--oneline", &format!("-{}", limit)];
+        let limit_arg = format!("-{}", limit);
+        let mut args = vec!["log", "--oneline", &limit_arg];
         if let Some(p) = path {
             args.push("--");
-            args.push(&p);
+            args.push(p);
         }
 
         match run_git(&args, &context.workspace) {

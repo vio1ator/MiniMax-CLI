@@ -285,8 +285,9 @@ impl ToolRegistryBuilder {
     /// Include web search tools.
     #[must_use]
     pub fn with_web_tools(self) -> Self {
-        use super::web_search::WebSearchTool;
+        use super::web_search::{WebFetchTool, WebSearchTool};
         self.with_tool(Arc::new(WebSearchTool))
+            .with_tool(Arc::new(WebFetchTool))
     }
 
     /// Include patch tools (`apply_patch`).
@@ -296,6 +297,17 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(ApplyPatchTool))
     }
 
+    /// Include git tools.
+    #[must_use]
+    pub fn with_git_tools(self) -> Self {
+        use super::git::{GitBranchTool, GitCommitTool, GitDiffTool, GitLogTool, GitStatusTool};
+        self.with_tool(Arc::new(GitDiffTool))
+            .with_tool(Arc::new(GitStatusTool))
+            .with_tool(Arc::new(GitCommitTool))
+            .with_tool(Arc::new(GitLogTool))
+            .with_tool(Arc::new(GitBranchTool))
+    }
+
     /// Include note tool.
     #[must_use]
     pub fn with_note_tool(self) -> Self {
@@ -303,7 +315,52 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(NoteTool))
     }
 
-    /// Include all agent tools (file tools + shell + note + search + patch).
+    /// Include memory tools.
+    #[must_use]
+    pub fn with_memory_tools(self, memory_path: std::path::PathBuf) -> Self {
+        use super::memory::{GetMemoryTool, SaveMemoryTool};
+        self.with_tool(Arc::new(SaveMemoryTool::new(memory_path.clone())))
+            .with_tool(Arc::new(GetMemoryTool::new(memory_path)))
+    }
+
+    /// Include artifact tools.
+    #[must_use]
+    pub fn with_artifact_tools(self) -> Self {
+        use super::artifact::{ArtifactCreateTool, ArtifactListTool};
+        self.with_tool(Arc::new(ArtifactCreateTool))
+            .with_tool(Arc::new(ArtifactListTool))
+    }
+
+    /// Include execution tools.
+    #[must_use]
+    pub fn with_execution_tools(self) -> Self {
+        use super::execution::ExecPythonTool;
+        self.with_tool(Arc::new(ExecPythonTool))
+    }
+
+    /// Include investigator tools.
+    #[must_use]
+    pub fn with_investigator_tool(
+        self,
+        manager: super::subagent::SharedSubAgentManager,
+        runtime: super::subagent::SubAgentRuntime,
+    ) -> Self {
+        use super::investigator::CodebaseInvestigatorTool;
+        self.with_tool(Arc::new(CodebaseInvestigatorTool::new(manager, runtime)))
+    }
+
+    /// Include security tools.
+    #[must_use]
+    pub fn with_security_tool(
+        self,
+        manager: super::subagent::SharedSubAgentManager,
+        runtime: super::subagent::SubAgentRuntime,
+    ) -> Self {
+        use super::security::SecurityAnalyzeTool;
+        self.with_tool(Arc::new(SecurityAnalyzeTool::new(manager, runtime)))
+    }
+
+    /// Include all agent tools (file tools + shell + note + search + patch + git).
     #[must_use]
     pub fn with_agent_tools(self, allow_shell: bool) -> Self {
         let builder = self
@@ -311,7 +368,8 @@ impl ToolRegistryBuilder {
             .with_note_tool()
             .with_search_tools()
             .with_web_tools()
-            .with_patch_tools();
+            .with_patch_tools()
+            .with_git_tools();
 
         if allow_shell {
             builder.with_shell_tools()
@@ -348,6 +406,8 @@ impl ToolRegistryBuilder {
         self.with_agent_tools(allow_shell)
             .with_todo_tool(todo_list)
             .with_plan_tool(plan_state)
+            .with_artifact_tools()
+            .with_execution_tools()
             .with_minimax_tools()
     }
 

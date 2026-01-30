@@ -188,6 +188,7 @@ pub async fn run_tui(config: &Config, options: TuiOptions) -> Result<()> {
         plan_state: app.plan_state.clone(),
         rlm_session: app.rlm_session.clone(),
         duo_session: app.duo_session.clone(),
+        memory_path: options.memory_path.clone(),
         cache_system: true,
         cache_tools: true,
         auto_compact: app.auto_compact,

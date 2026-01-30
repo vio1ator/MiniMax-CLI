@@ -89,10 +89,30 @@ impl SubAgentType {
                 "exec_shell",
                 "note",
                 "todo_write",
+                "git_status",
+                "git_diff",
+                "artifact_create",
+                "exec_python",
             ],
-            Self::Explore => vec!["list_dir", "read_file", "grep_files", "exec_shell"],
-            Self::Plan => vec!["list_dir", "read_file", "note", "update_plan", "todo_write"],
-            Self::Review => vec!["list_dir", "read_file", "grep_files", "note"],
+            Self::Explore => vec![
+                "list_dir",
+                "read_file",
+                "grep_files",
+                "exec_shell",
+                "git_status",
+                "git_log",
+                "web_search",
+                "web_fetch",
+            ],
+            Self::Plan => vec![
+                "list_dir",
+                "read_file",
+                "note",
+                "update_plan",
+                "todo_write",
+                "artifact_create",
+            ],
+            Self::Review => vec!["list_dir", "read_file", "grep_files", "note", "git_diff"],
             Self::Custom => vec![], // Must be provided by caller.
         }
     }
@@ -708,6 +728,13 @@ async fn run_subagent(
     for _step in 0..max_steps {
         steps += 1;
 
+        if let Some(event_tx) = runtime.event_tx.clone() {
+            let _ = event_tx.try_send(Event::AgentProgress {
+                id: agent_id.clone(),
+                status: format!("Step {}/{}", steps, max_steps),
+            });
+        }
+
         let request = MessageRequest {
             model: runtime.model.clone(),
             messages: messages.clone(),
@@ -750,6 +777,12 @@ async fn run_subagent(
 
         let mut tool_results: Vec<ContentBlock> = Vec::new();
         for (tool_id, tool_name, tool_input) in tool_uses {
+            if let Some(event_tx) = runtime.event_tx.clone() {
+                let _ = event_tx.try_send(Event::AgentProgress {
+                    id: agent_id.clone(),
+                    status: format!("Step {}/{}: Executing {}", steps, max_steps, tool_name),
+                });
+            }
             let result = match tokio::time::timeout(TOOL_TIMEOUT, async {
                 tool_registry.execute(&tool_name, tool_input).await
             })
@@ -829,7 +862,14 @@ impl SubAgentToolRegistry {
             .with_search_tools()
             .with_note_tool()
             .with_todo_tool(todo_list)
-            .with_plan_tool(plan_state);
+            .with_plan_tool(plan_state)
+            .with_git_tools()
+            .with_artifact_tools()
+            .with_execution_tools();
+
+        // Memory tools require a path, but sub-agents might not need them
+        // or we could pass it in. For now let's skip memory in sub-agents
+        // unless explicitly requested and we have a path.
 
         if allow_shell {
             builder = builder.with_shell_tools();
