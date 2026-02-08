@@ -362,6 +362,12 @@ pub const COMMANDS: &[CommandInfo] = &[
         description: "Search through conversation history",
         usage: "/search [query]",
     },
+    CommandInfo {
+        name: "copy",
+        aliases: &[],
+        description: "Copy last assistant message (or Nth message) to clipboard",
+        usage: "/copy [n]",
+    },
 ];
 
 /// Execute a slash command
@@ -454,6 +460,9 @@ pub fn execute(cmd: &str, app: &mut App) -> CommandResult {
             app.search_query = query.to_string();
             CommandResult::action(AppAction::OpenSearch(query.to_string()))
         }
+
+        // Copy command
+        "copy" => core::copy(app, arg),
 
         _ => CommandResult::error(format!(
             "Unknown command: /{command}. Type /help for available commands."

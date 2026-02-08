@@ -282,6 +282,13 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(GrepFilesTool))
     }
 
+    /// Include think tool for step-by-step reasoning.
+    #[must_use]
+    pub fn with_think_tool(self) -> Self {
+        use super::think::ThinkTool;
+        self.with_tool(Arc::new(ThinkTool))
+    }
+
     /// Include web search tools.
     #[must_use]
     pub fn with_web_tools(self) -> Self {
@@ -360,13 +367,14 @@ impl ToolRegistryBuilder {
         self.with_tool(Arc::new(SecurityAnalyzeTool::new(manager, runtime)))
     }
 
-    /// Include all agent tools (file tools + shell + note + search + patch + git).
+    /// Include all agent tools (file tools + shell + note + search + think + patch + git).
     #[must_use]
     pub fn with_agent_tools(self, allow_shell: bool) -> Self {
         let builder = self
             .with_file_tools()
             .with_note_tool()
             .with_search_tools()
+            .with_think_tool()
             .with_web_tools()
             .with_patch_tools()
             .with_git_tools();

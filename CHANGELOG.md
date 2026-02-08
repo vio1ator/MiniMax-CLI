@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-01-29
+
+### Added
+- `review` CLI subcommand — run code reviews from the command line (`minimax review --staged`, `minimax review --base origin/main`)
+- `exec` CLI subcommand — headless agentic execution (`minimax exec "prompt" --auto`)
+- `setup` CLI subcommand — bootstrap MCP config and skills directories (`minimax setup --mcp --skills --all`)
+- `mcp` CLI subcommands — manage MCP servers (`minimax mcp init/list/connect/tools`)
+- `think` tool — transparent reasoning pass-through for agent modes
+- `/copy` slash command — copy last assistant message (or Nth message) to clipboard
+- Updated modes display with new CLI commands
+
 ## [0.4.1] - 2026-01-28
 
 ### Added

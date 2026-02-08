@@ -22,6 +22,7 @@ pub mod security;
 pub mod shell;
 pub mod spec;
 pub mod subagent;
+pub mod think;
 pub mod todo;
 pub mod web_search;
 
@@ -85,3 +86,6 @@ pub use plan::UpdatePlanTool;
 
 // Re-export RLM tools
 pub use rlm::{RlmExecTool, RlmLoadTool, RlmQueryTool, RlmStatusTool};
+
+// Re-export think tool
+pub use think::ThinkTool;

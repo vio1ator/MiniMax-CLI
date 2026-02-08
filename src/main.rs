@@ -210,6 +210,14 @@ enum Commands {
     Duo(DuoCommand),
     /// MiniMax Coding API - specialized code generation and review
     Coding(CodingCommand),
+    /// Run a code review over a git diff
+    Review(ReviewArgs),
+    /// Run a non-interactive agentic prompt
+    Exec(ExecArgs),
+    /// Bootstrap MCP config and/or skills directories
+    Setup(SetupCliArgs),
+    /// Manage MCP servers
+    Mcp(McpCliCommand),
     /// Internal: run the responses API proxy.
     #[command(hide = true)]
     ResponsesApiProxy(responses_api_proxy::Args),
@@ -440,6 +448,86 @@ enum CodingSubcommand {
     Info,
 }
 
+#[derive(Args, Debug, Clone)]
+struct ReviewArgs {
+    /// Review staged changes instead of the working tree
+    #[arg(long, conflicts_with = "base")]
+    staged: bool,
+    /// Base ref to diff against (e.g. origin/main)
+    #[arg(long)]
+    base: Option<String>,
+    /// Limit diff to a specific path
+    #[arg(long)]
+    path: Option<PathBuf>,
+    /// Override model for this review
+    #[arg(long)]
+    model: Option<String>,
+    /// Maximum diff characters to include
+    #[arg(long, default_value_t = 200_000)]
+    max_chars: usize,
+}
+
+#[derive(Args, Debug, Clone)]
+struct ExecArgs {
+    /// Prompt to send to the model
+    prompt: String,
+    /// Override model for this run
+    #[arg(long)]
+    model: Option<String>,
+    /// Enable agentic mode with tool access and auto-approvals
+    #[arg(long, default_value_t = false)]
+    auto: bool,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+struct SetupCliArgs {
+    /// Initialize MCP configuration at the configured path
+    #[arg(long, default_value_t = false)]
+    mcp: bool,
+    /// Initialize skills directory and an example skill
+    #[arg(long, default_value_t = false)]
+    skills: bool,
+    /// Initialize both MCP config and skills (default when no flags provided)
+    #[arg(long, default_value_t = false)]
+    all: bool,
+    /// Create a local workspace skills directory (./skills)
+    #[arg(long, default_value_t = false)]
+    local: bool,
+    /// Overwrite existing template files
+    #[arg(long, default_value_t = false)]
+    force: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+struct McpCliCommand {
+    #[command(subcommand)]
+    command: McpSubcommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum McpSubcommand {
+    /// List configured MCP servers
+    List,
+    /// Create a template MCP config at the configured path
+    Init {
+        /// Overwrite an existing MCP config file
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
+    /// Connect to MCP servers and report status
+    Connect {
+        /// Optional server name to connect to
+        #[arg(value_name = "SERVER")]
+        server: Option<String>,
+    },
+    /// List tools discovered from MCP servers
+    Tools {
+        /// Optional server name to list tools for
+        #[arg(value_name = "SERVER")]
+        server: Option<String>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
@@ -529,6 +617,34 @@ async fn main() -> Result<()> {
             Commands::Rlm(args) => run_rlm_command(args),
             Commands::Duo(args) => run_duo_command(args),
             Commands::Coding(args) => run_coding_command(args),
+            Commands::Review(args) => {
+                let config = load_config_from_cli(&cli)?;
+                run_review(&config, args).await
+            }
+            Commands::Exec(args) => {
+                let config = load_config_from_cli(&cli)?;
+                let model = args
+                    .model
+                    .clone()
+                    .or_else(|| config.default_text_model.clone())
+                    .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+                if args.auto || cli.yolo {
+                    run_exec_agent(&config, &model, &args.prompt).await
+                } else {
+                    run_one_shot(&config, &model, &args.prompt).await
+                }
+            }
+            Commands::Setup(args) => {
+                let config = load_config_from_cli(&cli)?;
+                let workspace = cli.workspace.clone().unwrap_or_else(|| {
+                    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+                });
+                run_setup(&config, &workspace, args)
+            }
+            Commands::Mcp(args) => {
+                let config = load_config_from_cli(&cli)?;
+                run_mcp_command(&config, args)
+            }
             Commands::ResponsesApiProxy(args) => responses_api_proxy::run_main(args),
         };
     }
@@ -844,6 +960,10 @@ fn run_modes() {
     );
     println!("   minimax doctor     - Run system diagnostics");
     println!("   minimax sessions   - List saved sessions");
+    println!("   minimax review     - Code review via git diff");
+    println!("   minimax exec       - Non-interactive agentic execution");
+    println!("   minimax setup      - Bootstrap MCP config and skills");
+    println!("   minimax mcp        - Manage MCP servers");
     println!("   minimax init       - Create AGENTS.md template");
     println!("   minimax sandbox    - Run commands in sandbox");
     println!("   minimax completions - Generate shell completions");
@@ -1639,5 +1759,420 @@ async fn run_one_shot(config: &Config, model: &str, prompt: &str) -> Result<()> 
         }
     }
 
+    Ok(())
+}
+
+// ─── Review subcommand ───────────────────────────────────────────────────
+
+async fn run_review(config: &Config, args: ReviewArgs) -> Result<()> {
+    use crate::client::AnthropicClient;
+    use crate::models::{ContentBlock, Message, MessageRequest, SystemPrompt};
+
+    let diff = collect_diff(&args)?;
+    if diff.trim().is_empty() {
+        anyhow::bail!("No diff to review. Stage some changes or specify --base.");
+    }
+
+    let model = args
+        .model
+        .or_else(|| config.default_text_model.clone())
+        .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+
+    let system = SystemPrompt::Text(
+        "You are a senior code reviewer. Focus on bugs, risks, behavioral regressions, \
+         and missing tests. Provide findings ordered by severity with file references, \
+         then open questions, then a brief summary."
+            .to_string(),
+    );
+    let user_prompt =
+        format!("Review the following diff and provide feedback:\n\n{diff}\n\nEnd of diff.");
+
+    let client = AnthropicClient::new(config)?;
+    let request = MessageRequest {
+        model,
+        messages: vec![Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: user_prompt,
+                cache_control: None,
+            }],
+        }],
+        max_tokens: 4096,
+        system: Some(system),
+        tools: None,
+        tool_choice: None,
+        metadata: None,
+        thinking: None,
+        stream: Some(false),
+        temperature: Some(0.2),
+        top_p: Some(0.9),
+    };
+
+    let response = client.create_message(request).await?;
+    for block in response.content {
+        if let ContentBlock::Text { text, .. } = block {
+            println!("{text}");
+        }
+    }
+    Ok(())
+}
+
+fn collect_diff(args: &ReviewArgs) -> Result<String> {
+    use std::process::Command;
+
+    let mut cmd = Command::new("git");
+    cmd.arg("diff");
+    if args.staged {
+        cmd.arg("--cached");
+    }
+    if let Some(base) = &args.base {
+        cmd.arg(format!("{base}...HEAD"));
+    }
+    if let Some(path) = &args.path {
+        cmd.arg("--").arg(path);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to run git diff. Is git installed? ({e})"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {}", stderr.trim());
+    }
+    let mut diff = String::from_utf8_lossy(&output.stdout).to_string();
+    if diff.len() > args.max_chars {
+        diff.truncate(args.max_chars);
+        diff.push_str("\n...[truncated]\n");
+    }
+    Ok(diff)
+}
+
+// ─── Exec subcommand (agentic headless) ──────────────────────────────────
+
+async fn run_exec_agent(config: &Config, model: &str, prompt: &str) -> Result<()> {
+    use crate::client::AnthropicClient;
+    use crate::models::{ContentBlock, Message, MessageRequest};
+    use crate::tools::ToolRegistryBuilder;
+    use crate::tools::spec::ToolContext;
+
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let context = ToolContext::new(&workspace).with_trust_mode(false);
+
+    let todo_list = crate::tools::todo::new_shared_todo_list();
+    let plan_state = crate::tools::plan::new_shared_plan_state();
+
+    let registry = ToolRegistryBuilder::new()
+        .with_full_agent_tools(true, todo_list, plan_state)
+        .build(context);
+
+    let client = AnthropicClient::new(config)?;
+    let api_tools = registry.to_api_tools();
+
+    let mut messages = vec![Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text: prompt.to_string(),
+            cache_control: None,
+        }],
+    }];
+
+    // Agent loop: send → execute tools → send results → repeat
+    for _step in 0..25 {
+        let request = MessageRequest {
+            model: model.to_string(),
+            messages: messages.clone(),
+            max_tokens: 8192,
+            system: None,
+            tools: Some(api_tools.clone()),
+            tool_choice: None,
+            metadata: None,
+            thinking: None,
+            stream: Some(false),
+            temperature: None,
+            top_p: None,
+        };
+
+        let response = client.create_message(request).await?;
+
+        let mut has_tool_use = false;
+        let mut tool_results: Vec<ContentBlock> = Vec::new();
+
+        for block in &response.content {
+            match block {
+                ContentBlock::Text { text, .. } => {
+                    println!("{text}");
+                }
+                ContentBlock::ToolUse { id, name, input } => {
+                    has_tool_use = true;
+                    eprintln!("⚙ {name}");
+                    let result = registry.execute(name, input.clone()).await;
+                    let output = match result {
+                        Ok(text) => text,
+                        Err(e) => format!("Error: {e}"),
+                    };
+                    tool_results.push(ContentBlock::ToolResult {
+                        tool_use_id: id.clone(),
+                        content: output,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        // Append assistant message
+        messages.push(Message {
+            role: "assistant".to_string(),
+            content: response.content.clone(),
+        });
+
+        if !has_tool_use {
+            break;
+        }
+
+        // Append tool results
+        messages.push(Message {
+            role: "user".to_string(),
+            content: tool_results,
+        });
+    }
+
+    Ok(())
+}
+
+// ─── Setup subcommand ────────────────────────────────────────────────────
+
+fn run_setup(config: &Config, workspace: &std::path::Path, args: SetupCliArgs) -> Result<()> {
+    use colored::Colorize;
+
+    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
+
+    let mut run_mcp = args.mcp || args.all;
+    let mut run_skills = args.skills || args.all;
+    if !run_mcp && !run_skills {
+        run_mcp = true;
+        run_skills = true;
+    }
+
+    println!(
+        "{}",
+        "MiniMax Setup".truecolor(blue_r, blue_g, blue_b).bold()
+    );
+    println!("{}", "=============".truecolor(blue_r, blue_g, blue_b));
+    println!("Workspace: {}", workspace.display());
+    println!();
+
+    if run_mcp {
+        let mcp_path = config.mcp_config_path();
+        if mcp_path.exists() && !args.force {
+            println!(
+                "  {} MCP config already exists at {}",
+                "·".truecolor(blue_r, blue_g, blue_b),
+                mcp_path.display()
+            );
+        } else {
+            if let Some(parent) = mcp_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let template = serde_json::json!({
+                "mcpServers": {
+                    "example": {
+                        "command": "npx",
+                        "args": ["-y", "@example/mcp-server"],
+                        "env": {},
+                        "disabled": true
+                    }
+                }
+            });
+            std::fs::write(&mcp_path, serde_json::to_string_pretty(&template)?)?;
+            println!(
+                "  {} Created MCP config at {}",
+                "✓".truecolor(green_r, green_g, green_b),
+                mcp_path.display()
+            );
+        }
+        println!(
+            "    Next: edit the file, then run {}",
+            "minimax mcp list".truecolor(blue_r, blue_g, blue_b)
+        );
+    }
+
+    if run_skills {
+        let skills_dir = if args.local {
+            workspace.join("skills")
+        } else {
+            config.skills_dir()
+        };
+
+        let example_dir = skills_dir.join("example");
+        let skill_file = example_dir.join("SKILL.md");
+
+        if skill_file.exists() && !args.force {
+            println!(
+                "  {} Example skill already exists at {}",
+                "·".truecolor(blue_r, blue_g, blue_b),
+                skill_file.display()
+            );
+        } else {
+            std::fs::create_dir_all(&example_dir)?;
+            std::fs::write(
+                &skill_file,
+                "# Example Skill\n\n\
+                 Description: An example skill template.\n\n\
+                 ## Instructions\n\n\
+                 Replace this with your custom skill instructions.\n",
+            )?;
+            println!(
+                "  {} Created example skill at {}",
+                "✓".truecolor(green_r, green_g, green_b),
+                skill_file.display()
+            );
+        }
+        println!(
+            "    Manage skills with: {}",
+            "/skills".truecolor(blue_r, blue_g, blue_b)
+        );
+    }
+
+    println!();
+    Ok(())
+}
+
+// ─── MCP CLI subcommands ─────────────────────────────────────────────────
+
+fn run_mcp_command(config: &Config, cmd: McpCliCommand) -> Result<()> {
+    use colored::Colorize;
+
+    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
+    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
+    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+
+    let mcp_path = config.mcp_config_path();
+
+    match cmd.command {
+        McpSubcommand::Init { force } => {
+            if mcp_path.exists() && !force {
+                println!(
+                    "{} MCP config already exists at {}",
+                    "·".truecolor(muted_r, muted_g, muted_b),
+                    mcp_path.display()
+                );
+                println!("Use --force to overwrite.");
+            } else {
+                if let Some(parent) = mcp_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let template = serde_json::json!({
+                    "mcpServers": {
+                        "example": {
+                            "command": "npx",
+                            "args": ["-y", "@example/mcp-server"],
+                            "env": {},
+                            "disabled": true
+                        }
+                    }
+                });
+                std::fs::write(&mcp_path, serde_json::to_string_pretty(&template)?)?;
+                println!(
+                    "{} Created MCP config at {}",
+                    "✓".truecolor(green_r, green_g, green_b),
+                    mcp_path.display()
+                );
+            }
+        }
+        McpSubcommand::List => {
+            println!("{}", "MCP Servers".truecolor(blue_r, blue_g, blue_b).bold());
+            println!("{}", "===========".truecolor(blue_r, blue_g, blue_b));
+
+            match crate::mcp::McpPool::from_config_path(&mcp_path) {
+                Ok(pool) => {
+                    let cfg = pool.config();
+                    if cfg.servers.is_empty() {
+                        println!("  (no servers configured)");
+                    } else {
+                        for (name, server) in &cfg.servers {
+                            let status = if server.disabled {
+                                "disabled".truecolor(muted_r, muted_g, muted_b)
+                            } else {
+                                "enabled".truecolor(green_r, green_g, green_b)
+                            };
+                            println!("  • {} ({})", name, status);
+                            println!("    Command: {} {}", server.command, server.args.join(" "));
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!(
+                        "  {} Failed to load MCP config: {}",
+                        "✗".truecolor(red_r, red_g, red_b),
+                        e
+                    );
+                    if !mcp_path.exists() {
+                        println!(
+                            "  Run {} to create one.",
+                            "minimax mcp init".truecolor(blue_r, blue_g, blue_b)
+                        );
+                    }
+                }
+            }
+        }
+        McpSubcommand::Connect { server } => {
+            println!("Connecting to MCP servers...");
+            match crate::mcp::McpPool::from_config_path(&mcp_path) {
+                Ok(pool) => {
+                    let connected = pool.connected_servers();
+                    if connected.is_empty() {
+                        println!(
+                            "  {} No servers connected",
+                            "✗".truecolor(red_r, red_g, red_b)
+                        );
+                    } else {
+                        for name in connected {
+                            if server.as_deref().is_some_and(|s| s != name) {
+                                continue;
+                            }
+                            println!(
+                                "  {} {} connected",
+                                "✓".truecolor(green_r, green_g, green_b),
+                                name
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  {} Failed: {}", "✗".truecolor(red_r, red_g, red_b), e);
+                }
+            }
+        }
+        McpSubcommand::Tools { server } => {
+            println!("{}", "MCP Tools".truecolor(blue_r, blue_g, blue_b).bold());
+
+            match crate::mcp::McpPool::from_config_path(&mcp_path) {
+                Ok(pool) => {
+                    let tools = pool.all_tools();
+                    if tools.is_empty() {
+                        println!("  (no tools discovered)");
+                    } else {
+                        for (full_name, tool) in &tools {
+                            if let Some(ref s) = server
+                                && !full_name.starts_with(&format!("mcp_{s}_"))
+                            {
+                                continue;
+                            }
+                            println!(
+                                "  {} — {}",
+                                tool.name,
+                                tool.description.as_deref().unwrap_or("")
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  {} Failed: {}", "✗".truecolor(red_r, red_g, red_b), e);
+                }
+            }
+        }
+    }
     Ok(())
 }

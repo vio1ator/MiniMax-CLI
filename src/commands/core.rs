@@ -112,3 +112,65 @@ Docs:      https://platform.minimax.io/docs\n\n\
 Tip: API keys are available in the dashboard console.",
     )
 }
+
+/// Copy last assistant message (or Nth message) to clipboard
+pub fn copy(app: &mut App, arg: Option<&str>) -> CommandResult {
+    use crate::tui::history::HistoryCell;
+
+    if app.history.is_empty() {
+        return CommandResult::error("No messages to copy");
+    }
+
+    let content = if let Some(n_str) = arg {
+        // Copy specific message by 1-indexed number
+        match n_str.parse::<usize>() {
+            Ok(n) if n >= 1 && n <= app.history.len() => {
+                extract_text_from_cell(&app.history[n - 1])
+            }
+            Ok(n) => {
+                return CommandResult::error(format!(
+                    "Message {n} out of range (1-{})",
+                    app.history.len()
+                ));
+            }
+            Err(_) => {
+                return CommandResult::error("Usage: /copy [n]  — n is a message number");
+            }
+        }
+    } else {
+        // No arg: copy last assistant message
+        app.history
+            .iter()
+            .rev()
+            .find_map(|cell| {
+                if let HistoryCell::Assistant { content, .. } = cell {
+                    Some(content.clone())
+                } else {
+                    None
+                }
+            })
+            .ok_or(())
+            .unwrap_or_default()
+    };
+
+    if content.is_empty() {
+        return CommandResult::error("No assistant message to copy");
+    }
+
+    match app.clipboard.write_text(&content) {
+        Ok(()) => CommandResult::message("Copied to clipboard ✓"),
+        Err(e) => CommandResult::error(format!("Failed to copy: {e}")),
+    }
+}
+
+fn extract_text_from_cell(cell: &crate::tui::history::HistoryCell) -> String {
+    use crate::tui::history::HistoryCell;
+    match cell {
+        HistoryCell::User { content }
+        | HistoryCell::Assistant { content, .. }
+        | HistoryCell::System { content } => content.clone(),
+        HistoryCell::ThinkingSummary { summary } => summary.clone(),
+        HistoryCell::Error { message, .. } => message.clone(),
+        HistoryCell::Tool(_) => String::new(),
+    }
+}
