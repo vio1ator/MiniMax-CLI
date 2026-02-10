@@ -733,7 +733,7 @@ fn extract_score(text: &str) -> Option<f64> {
 /// Enhanced workflow runner for Duo mode with coding API.
 ///
 /// This function manages the complete player-coach loop with proper phase transitions.
-#[allow(dead_code)]
+/// It uses the AnthropicClient directly for API calls and supports file I/O callbacks.
 pub async fn run_duo_workflow<F1, F2, F3>(
     session: &mut DuoSession,
     coding_api_call: F1,
@@ -837,6 +837,164 @@ where
                 break;
             }
         }
+    }
+
+    Ok(())
+}
+
+// === File System Integration Helpers ===
+
+/// Read a file from the given path (for coach validation).
+pub async fn read_file(path: &std::path::Path) -> Result<String, anyhow::Error> {
+    let content = tokio::fs::read_to_string(path).await?;
+    Ok(content)
+}
+
+/// Write content to a file (for player implementation).
+pub async fn write_file(path: &std::path::Path, content: &str) -> Result<(), anyhow::Error> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(path, content).await?;
+    Ok(())
+}
+
+/// List files in a directory (with filtering).
+pub async fn list_files(
+    directory: &std::path::Path,
+) -> Result<Vec<std::path::PathBuf>, anyhow::Error> {
+    let mut entries = Vec::new();
+    let mut stream = tokio::fs::read_dir(directory).await?;
+
+    while let Some(entry) = stream.next_entry().await? {
+        let path = entry.path();
+        let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+
+        // Skip common build artifacts and hidden files
+        if should_skip_file(file_name) {
+            continue;
+        }
+
+        entries.push(path);
+    }
+
+    Ok(entries)
+}
+
+/// Validate that a path is within the workspace (security sandboxing).
+pub fn validate_path(path: &std::path::Path, workspace: &std::path::Path) -> Result<(), DuoError> {
+    let canonical_workspace =
+        workspace
+            .canonicalize()
+            .map_err(|_| DuoError::InvalidPhaseTransition {
+                from: DuoPhase::Player,
+                to: DuoPhase::Coach,
+            })?;
+
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|_| DuoError::InvalidPhaseTransition {
+            from: DuoPhase::Coach,
+            to: DuoPhase::Player,
+        })?;
+
+    if canonical_path.starts_with(&canonical_workspace) {
+        Ok(())
+    } else {
+        Err(DuoError::InvalidPhaseTransition {
+            from: DuoPhase::Player,
+            to: DuoPhase::Coach,
+        })
+    }
+}
+
+fn should_skip_file(file_name: &str) -> bool {
+    matches!(
+        file_name,
+        ".git"
+            | ".svn"
+            | ".idea"
+            | "target"
+            | "node_modules"
+            | "vendor"
+            | ".DS_Store"
+            | "Thumbs.db"
+            | ".minimax"
+            | "Cargo.lock"
+            | "package-lock.json"
+            | "yarn.lock"
+    )
+}
+
+// === Session Persistence ===
+
+/// Get the session directory path
+fn get_session_dir() -> Result<std::path::PathBuf, anyhow::Error> {
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?;
+    let session_dir = config_dir.join("minimax").join("sessions").join("duo");
+    Ok(session_dir)
+}
+
+/// Save a session to disk
+pub async fn save_session(session: &DuoSession, session_id: &str) -> Result<(), anyhow::Error> {
+    let session_dir = get_session_dir()?;
+    tokio::fs::create_dir_all(&session_dir).await?;
+
+    let session_path = session_dir.join(format!("{}.json", session_id));
+    let json = serde_json::to_string_pretty(session)?;
+    tokio::fs::write(session_path, json).await?;
+
+    Ok(())
+}
+
+/// Load a session from disk
+pub async fn load_session(session_id: &str) -> Result<DuoSession, anyhow::Error> {
+    let session_dir = get_session_dir()?;
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    let content = tokio::fs::read_to_string(session_path).await?;
+    let session = serde_json::from_str(&content)?;
+
+    Ok(session)
+}
+
+/// List all saved sessions
+pub async fn list_sessions() -> Result<Vec<(String, DuoState)>, anyhow::Error> {
+    let session_dir = get_session_dir()?;
+
+    if !session_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions = Vec::new();
+    let mut stream = tokio::fs::read_dir(&session_dir).await?;
+
+    while let Some(entry) = stream.next_entry().await? {
+        let path = entry.path();
+
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            if let Some(file_name) = path.file_stem().and_then(|f| f.to_str()) {
+                let content = tokio::fs::read_to_string(&path).await?;
+                if let Ok(session) = serde_json::from_str::<DuoSession>(&content) {
+                    if let Some(state) = session.active_state {
+                        sessions.push((file_name.to_string(), state));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(sessions)
+}
+
+/// Delete a session from disk
+pub async fn delete_session(session_id: &str) -> Result<(), anyhow::Error> {
+    let session_dir = get_session_dir()?;
+    let session_path = session_dir.join(format!("{}.json", session_id));
+
+    if session_path.exists() {
+        tokio::fs::remove_file(session_path).await?;
     }
 
     Ok(())

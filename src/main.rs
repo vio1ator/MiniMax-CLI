@@ -614,7 +614,7 @@ async fn main() -> Result<()> {
                 Ok(())
             }
             Commands::Rlm(args) => run_rlm_command(args),
-            Commands::Duo(args) => run_duo_command(args),
+            Commands::Duo(args) => run_duo_command(&cli, args).await,
             Commands::Coding(args) => run_coding_command(args),
             Commands::Review(args) => {
                 let config = load_config_from_cli(&cli)?;
@@ -1095,8 +1095,14 @@ fn print_rlm_info() {
 }
 
 /// Run Duo commands
-fn run_duo_command(command: DuoCommand) -> Result<()> {
+async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
     use colored::Colorize;
+
+    let config = load_config_from_cli(cli)?;
+    let workspace = cli
+        .workspace
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     match command.command {
         DuoSubcommand::Start {
@@ -1105,29 +1111,135 @@ fn run_duo_command(command: DuoCommand) -> Result<()> {
             threshold,
         } => {
             println!("Starting Duo autocoding session...");
-            println!("Requirements: {:?}", requirements);
-            println!("Max turns: {:?}", max_turns);
-            println!("Threshold: {:?}", threshold);
+
+            let mut requirements_text = String::new();
+
+            if let Some(req_path) = requirements {
+                println!("Loading requirements from: {:?}", req_path);
+                requirements_text = std::fs::read_to_string(&req_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to read requirements file: {}", e))?;
+                println!("Requirements loaded ({} bytes)", requirements_text.len());
+            } else {
+                println!(
+                    "No requirements file provided. Session will be initialized with empty requirements."
+                );
+            }
+
+            let session_dir = dirs::config_dir()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?
+                .join("minimax")
+                .join("sessions")
+                .join("duo");
+
+            tokio::fs::create_dir_all(&session_dir)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to create session directory: {}", e))?;
+
+            let session_id = uuid::Uuid::new_v4().to_string();
+
+            let mut session = crate::duo::DuoSession::new();
+            let state = session.start_session(requirements_text, None, max_turns, threshold);
+
+            let phase = state.phase.clone();
+            let max_turns_val = state.max_turns;
+            let threshold_val = state.approval_threshold;
+            let session_id_for_save = state.session_id.clone();
+
+            let _ = state;
+            crate::duo::save_session(&session, &session_id_for_save)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to save session: {}", e))?;
+
             println!(
-                "\n{}: Duo mode implementation in progress",
-                "Note".truecolor(
-                    palette::MINIMAX_ORANGE_RGB.0,
-                    palette::MINIMAX_ORANGE_RGB.1,
-                    palette::MINIMAX_ORANGE_RGB.2
+                "\n{}: Session created successfully",
+                "✓".truecolor(
+                    palette::MINIMAX_GREEN_RGB.0,
+                    palette::MINIMAX_GREEN_RGB.1,
+                    palette::MINIMAX_GREEN_RGB.2
                 )
             );
+            println!("  Session ID: {}", &session_id[..8]);
+            println!("  Phase: {}", phase);
+            println!("  Max turns: {}", max_turns_val);
+            println!("  Threshold: {:.0}%", threshold_val * 100.0);
+
+            println!(
+                "\n{}: Session saved to disk",
+                "✓".truecolor(
+                    palette::MINIMAX_GREEN_RGB.0,
+                    palette::MINIMAX_GREEN_RGB.1,
+                    palette::MINIMAX_GREEN_RGB.2
+                )
+            );
+            println!(
+                "  Location: {}/{}.json",
+                session_dir.display(),
+                &session_id[..8]
+            );
+
+            Ok(())
         }
         DuoSubcommand::Continue { session } => {
             println!("Continuing session: {}", session);
+
+            let loaded_session = crate::duo::load_session(&session)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to load session: {}", e))?;
+
+            if let Some(state) = loaded_session.active_state {
+                println!(
+                    "\n{}: Session loaded successfully",
+                    "✓".truecolor(
+                        palette::MINIMAX_GREEN_RGB.0,
+                        palette::MINIMAX_GREEN_RGB.1,
+                        palette::MINIMAX_GREEN_RGB.2
+                    )
+                );
+                println!("  Session ID: {}", state.session_id);
+                println!("  Phase: {}", state.phase);
+                println!("  Status: {}", state.status);
+                println!("  Turn: {}/{}", state.current_turn, state.max_turns);
+                Ok(())
+            } else {
+                anyhow::bail!("Session has no active state")
+            }
         }
         DuoSubcommand::Sessions { limit } => {
-            println!("Listing Duo sessions (limit: {:?})...", limit);
+            let limit = limit.unwrap_or(20);
+            let sessions = crate::duo::list_sessions()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to list sessions: {}", e))?;
+
+            println!("\n{} saved Duo sessions:", sessions.len());
+
+            for (id, state) in sessions.into_iter().take(limit) {
+                let name = state.session_name.as_deref().unwrap_or(&id[..8]);
+
+                let icon = match state.status {
+                    crate::duo::DuoStatus::Approved => "✅",
+                    crate::duo::DuoStatus::Rejected => "❌",
+                    crate::duo::DuoStatus::Timeout => "⏰",
+                    crate::duo::DuoStatus::Active => "🔄",
+                };
+
+                println!(
+                    "  {} {} ({}) - Phase: {} | Turn: {}/{}",
+                    icon,
+                    name,
+                    &id[..8],
+                    state.phase,
+                    state.current_turn,
+                    state.max_turns
+                );
+            }
+
+            Ok(())
         }
         DuoSubcommand::Info => {
             print_duo_info();
+            Ok(())
         }
     }
-    Ok(())
 }
 
 fn print_duo_info() {
