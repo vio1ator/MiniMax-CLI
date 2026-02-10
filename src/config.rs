@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::features::{Features, FeaturesToml, is_known_feature_key};
+use crate::features::{is_known_feature_key, Features, FeaturesToml};
 use crate::hooks::HooksConfig;
 
 // === Types ===
@@ -184,7 +184,13 @@ impl Config {
                 .clone()
                 .unwrap_or_else(|| "https://api.minimax.io".to_string()),
         );
-        format!("{}/anthropic", root.trim_end_matches('/'))
+        let minimax_domains = ["api.minimax.io", "api.minimaxi.com"];
+        let is_minimax = minimax_domains.iter().any(|domain| root.contains(domain));
+        if is_minimax {
+            format!("{}/anthropic", root.trim_end_matches('/'))
+        } else {
+            root.trim_end_matches('/').to_string()
+        }
     }
 
     // === Coding API Methods ===
