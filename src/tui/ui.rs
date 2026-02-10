@@ -776,11 +776,14 @@ async fn run_event_loop(
                     copy_active_selection(app);
                 }
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    // Cancel current request or exit
+                    // Cancel current request or clear input or exit
                     if app.is_loading {
                         engine_handle.cancel();
                         app.is_loading = false;
                         app.status_message = Some("Request cancelled".to_string());
+                    } else if !app.input.is_empty() {
+                        app.clear_input();
+                        app.status_message = Some("Input cleared".to_string());
                     } else {
                         let _ = engine_handle.send(Op::Shutdown).await;
                         return Ok(());
