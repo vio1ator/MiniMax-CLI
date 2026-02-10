@@ -39,7 +39,6 @@ mod smoke;
 mod snippets;
 mod tools;
 mod tui;
-mod ui;
 mod utils;
 
 use crate::config::Config;

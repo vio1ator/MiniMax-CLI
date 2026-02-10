@@ -10,7 +10,7 @@ use tokio_util::io::ReaderStream;
 
 use crate::client::MiniMaxClient;
 use crate::palette;
-use crate::ui::progress_bar;
+use crate::tui::ui::progress_bar;
 use crate::utils::{output_path, pretty_json, write_bytes};
 
 // === Types ===

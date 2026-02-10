@@ -11,7 +11,7 @@ use tokio::time::{Duration, sleep};
 use crate::client::MiniMaxClient;
 use crate::modules::files::retrieve_file;
 use crate::palette;
-use crate::ui::spinner;
+use crate::tui::ui::spinner;
 use crate::utils::{
     extension_from_url, output_path, pretty_json, timestamped_filename, write_bytes,
 };
