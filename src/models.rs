@@ -116,9 +116,24 @@ pub struct Usage {
 }
 
 /// Map known models to their approximate context window sizes.
+/// Accepts an optional custom context windows HashMap for user-defined models.
 #[must_use]
-pub fn context_window_for_model(model: &str) -> Option<u32> {
+pub fn context_window_for_model(
+    model: &str,
+    custom_context_windows: Option<&std::collections::HashMap<String, u32>>,
+) -> Option<u32> {
     let lower = model.to_lowercase();
+
+    // Check custom context windows first
+    if let Some(custom) = custom_context_windows {
+        for (key, size) in custom {
+            if lower.contains(&key.to_lowercase()) {
+                return Some(*size);
+            }
+        }
+    }
+
+    // Then check built-in models
     if lower.contains("minimax-m2.1") || lower.contains("m2.1") {
         return Some(1_000_000);
     }

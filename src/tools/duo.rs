@@ -457,388 +457,401 @@ mod tests {
         assert!(required.contains(&json!("approved")));
     }
 
-     #[test]
-     fn test_duo_status_tool_schema() {
-         let session = new_shared_duo_session();
-         let tool = DuoStatusTool::new(session);
-
-         assert_eq!(tool.name(), "duo_status");
-         assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
-     }
- }
-
- // === File System Tools ===
-
- /// Write content to a file (for player implementation).
- /// Path is relative to workspace and sandboxed for security.
- pub struct DuoWriteFileTool {
-     workspace: std::path::PathBuf,
- }
-
- impl DuoWriteFileTool {
-     #[must_use]
-     pub fn new(workspace: std::path::PathBuf) -> Self {
-         Self { workspace }
-     }
- }
-
- #[async_trait]
- impl ToolSpec for DuoWriteFileTool {
-     fn name(&self) -> &'static str {
-         "duo_write_file"
-     }
-
-     fn description(&self) -> &'static str {
-         "Write content to a file in the workspace. Use this for the PLAYER to implement code files."
-     }
-
-     fn input_schema(&self) -> Value {
-         json!({
-             "type": "object",
-             "properties": {
-                 "path": {
-                     "type": "string",
-                     "description": "Path to the file (relative to workspace)"
-                 },
-                 "content": {
-                     "type": "string",
-                     "description": "Content to write"
-                 }
-             },
-             "required": ["path", "content"]
-         })
-     }
-
-     fn capabilities(&self) -> Vec<ToolCapability> {
-         vec![
-             ToolCapability::WritesFiles,
-             ToolCapability::Sandboxable,
-         ]
-     }
-
-     fn approval_requirement(&self) -> ApprovalRequirement {
-         ApprovalRequirement::Auto
-     }
-
-     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
-         let path_str = required_str(&input, "path")?;
-         let file_content = required_str(&input, "content")?;
-
-         let file_path = self.workspace.join(path_str);
-
-         if let Some(parent) = file_path.parent() {
-             tokio::fs::create_dir_all(parent)
-                 .await
-                 .map_err(|e| ToolError::execution_failed(format!("Failed to create directory: {}", e)))?;
-         }
-
-         tokio::fs::write(&file_path, file_content)
-             .await
-             .map_err(|e| ToolError::execution_failed(format!("Failed to write file: {}", e)))?;
-
-         Ok(ToolResult::success(format!(
-             "Wrote {} bytes to {}",
-             file_content.len(),
-             path_str
-         )))
-     }
- }
-
- /// Read a file from the workspace (for coach validation).
- pub struct DuoReadFileTool {
-     workspace: std::path::PathBuf,
- }
-
- impl DuoReadFileTool {
-     #[must_use]
-     pub fn new(workspace: std::path::PathBuf) -> Self {
-         Self { workspace }
-     }
- }
-
- #[async_trait]
- impl ToolSpec for DuoReadFileTool {
-     fn name(&self) -> &'static str {
-         "duo_read_file"
-     }
-
-     fn description(&self) -> &'static str {
-         "Read a file from the workspace. Use this for the COACH to validate implementation files."
-     }
-
-     fn input_schema(&self) -> Value {
-         json!({
-             "type": "object",
-             "properties": {
-                 "path": {
-                     "type": "string",
-                     "description": "Path to the file (relative to workspace)"
-                 }
-             },
-             "required": ["path"]
-         })
-     }
-
-     fn capabilities(&self) -> Vec<ToolCapability> {
-         vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
-     }
-
-     fn approval_requirement(&self) -> ApprovalRequirement {
-         ApprovalRequirement::Auto
-     }
-
-     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
-         let path_str = required_str(&input, "path")?;
-
-         let file_path = self.workspace.join(path_str);
-
-         let content = tokio::fs::read_to_string(&file_path)
-             .await
-             .map_err(|e| ToolError::execution_failed(format!("Failed to read file: {}", e)))?;
-
-         Ok(ToolResult::success(content))
-     }
- }
-
- /// List files in a directory (for context discovery).
- pub struct DuoListDirTool {
-     workspace: std::path::PathBuf,
- }
-
- impl DuoListDirTool {
-     #[must_use]
-     pub fn new(workspace: std::path::PathBuf) -> Self {
-         Self { workspace }
-     }
- }
-
- #[async_trait]
- impl ToolSpec for DuoListDirTool {
-     fn name(&self) -> &'static str {
-         "duo_list_dir"
-     }
-
-     fn description(&self) -> &'static str {
-         "List files in a directory. Use this to explore the workspace structure."
-     }
-
-     fn input_schema(&self) -> Value {
-         json!({
-             "type": "object",
-             "properties": {
-                 "path": {
-                     "type": "string",
-                     "description": "Path to directory (relative to workspace, default: .)"
-                 }
-             },
-             "required": []
-         })
-     }
-
-     fn capabilities(&self) -> Vec<ToolCapability> {
-         vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
-     }
-
-     fn approval_requirement(&self) -> ApprovalRequirement {
-         ApprovalRequirement::Auto
-     }
-
-     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
-         let path_str = optional_str(&input, "path").unwrap_or(".");
-         let dir_path = self.workspace.join(path_str);
-
-         let mut entries = Vec::new();
-
-         let mut stream = tokio::fs::read_dir(&dir_path)
-             .await
-             .map_err(|e| ToolError::execution_failed(format!("Failed to read directory: {}", e)))?;
-
-         while let Some(entry) = stream.next_entry().await.map_err(|e| ToolError::execution_failed(e.to_string()))? {
-             let path = entry.path();
-             let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("").to_string();
-             let file_type = entry.file_type().await.map_err(|e| ToolError::execution_failed(e.to_string()))?;
-
-             if !should_skip_file(&file_name) {
-                 entries.push(json!({
-                     "name": file_name,
-                     "is_dir": file_type.is_dir(),
-                     "path": path.to_string_lossy().to_string()
-                 }));
-             }
-         }
-
-         ToolResult::json(&entries).map_err(|e| ToolError::execution_failed(e.to_string()))
-     }
- }
-
- fn should_skip_file(file_name: &str) -> bool {
-     matches!(
-         file_name,
-         ".git"
-             | ".svn"
-             | ".idea"
-             | "target"
-             | "node_modules"
-             | "vendor"
-             | ".DS_Store"
-             | "Thumbs.db"
-             | ".minimax"
-             | "Cargo.lock"
-             | "package-lock.json"
-             | "yarn.lock"
-     )
- }
-
- #[cfg(test)]
- mod file_tool_tests {
-     use super::*;
-     use crate::tools::spec::ToolContext;
-     use tempfile::tempdir;
-
-     #[tokio::test]
-     async fn test_duo_write_file_tool() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-         let tool = DuoWriteFileTool::new(workspace.clone());
-
-         let result = tool
-             .execute(
-                 json!({"path": "test.txt", "content": "hello world"}),
-                 &ToolContext::new(workspace),
-             )
-             .await
-             .expect("execute");
-
-         assert!(result.success);
-         assert!(result.content.contains("Wrote"));
-
-         let written = std::fs::read_to_string(tmp.path().join("test.txt")).expect("read");
-         assert_eq!(written, "hello world");
-     }
-
-     #[tokio::test]
-     async fn test_duo_write_file_creates_dirs() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-         let tool = DuoWriteFileTool::new(workspace.clone());
-
-         let result = tool
-             .execute(
-                 json!({"path": "subdir/nested/file.txt", "content": "nested content"}),
-                 &ToolContext::new(workspace),
-             )
-             .await
-             .expect("execute");
-
-         assert!(result.success);
-
-         let written = std::fs::read_to_string(tmp.path().join("subdir/nested/file.txt")).expect("read");
-         assert_eq!(written, "nested content");
-     }
-
-     #[tokio::test]
-     async fn test_duo_read_file_tool() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-
-         std::fs::write(tmp.path().join("test.txt"), "hello world").expect("write");
-
-         let tool = DuoReadFileTool::new(workspace.clone());
-         let result = tool
-             .execute(json!({"path": "test.txt"}), &ToolContext::new(workspace))
-             .await
-             .expect("execute");
-
-         assert!(result.success);
-         assert_eq!(result.content, "hello world");
-     }
-
-     #[tokio::test]
-     async fn test_duo_list_dir_tool() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-
-         std::fs::write(tmp.path().join("file1.txt"), "").expect("write");
-         std::fs::write(tmp.path().join("file2.txt"), "").expect("write");
-         std::fs::create_dir(tmp.path().join("subdir")).expect("mkdir");
-
-         let tool = DuoListDirTool::new(workspace.clone());
-         let result = tool
-             .execute(json!({}), &ToolContext::new(workspace))
-             .await
-             .expect("execute");
-
-         assert!(result.success);
-         let entries: Vec<Value> = serde_json::from_str(&result.content).expect("parse");
-         assert!(entries.iter().any(|e| e["name"] == "file1.txt"));
-         assert!(entries.iter().any(|e| e["name"] == "file2.txt"));
-         assert!(entries.iter().any(|e| e["name"] == "subdir" && e["is_dir"] == true));
-     }
-
-     #[tokio::test]
-     async fn test_duo_list_dir_filters_hidden() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-
-         std::fs::write(tmp.path().join("file.txt"), "").expect("write");
-         std::fs::create_dir(tmp.path().join("target")).expect("mkdir");
-         std::fs::write(tmp.path().join("target").join("lib.rs"), "").expect("write");
-
-         let tool = DuoListDirTool::new(workspace.clone());
-         let result = tool
-             .execute(json!({}), &ToolContext::new(workspace))
-             .await
-             .expect("execute");
-
-         assert!(result.success);
-         let entries: Vec<Value> = serde_json::from_str(&result.content).expect("parse");
-         assert!(entries.iter().any(|e| e["name"] == "file.txt"));
-         assert!(!entries.iter().any(|e| e["name"] == "target"));
-     }
-
-      #[test]
-      fn test_duo_write_file_tool_properties() {
-          let tmp = tempdir().expect("tempdir");
-          let workspace = tmp.path().to_path_buf();
-          let tool = DuoWriteFileTool::new(workspace.clone());
-
-          assert_eq!(tool.name(), "duo_write_file");
-          assert!(!tool.is_read_only());
-          assert!(tool.is_sandboxable());
-          assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
-      }
-
-     #[test]
-     fn test_duo_read_file_tool_properties() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-         let tool = DuoReadFileTool::new(workspace.clone());
-
-         assert_eq!(tool.name(), "duo_read_file");
-         assert!(tool.is_read_only());
-         assert!(tool.is_sandboxable());
-         assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
-     }
-
-     #[test]
-     fn test_duo_list_dir_tool_properties() {
-         let tmp = tempdir().expect("tempdir");
-         let workspace = tmp.path().to_path_buf();
-         let tool = DuoListDirTool::new(workspace.clone());
-
-         assert_eq!(tool.name(), "duo_list_dir");
-         assert!(tool.is_read_only());
-         assert!(tool.is_sandboxable());
-         assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
-     }
-
-     #[test]
-     fn test_should_skip_file() {
-         assert!(should_skip_file(".git"));
-         assert!(should_skip_file("target"));
-         assert!(should_skip_file("node_modules"));
-         assert!(should_skip_file("Cargo.lock"));
-         assert!(!should_skip_file("src"));
-         assert!(!should_skip_file("main.rs"));
-     }
- }
+    #[test]
+    fn test_duo_status_tool_schema() {
+        let session = new_shared_duo_session();
+        let tool = DuoStatusTool::new(session);
+
+        assert_eq!(tool.name(), "duo_status");
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+}
+
+// === File System Tools ===
+
+/// Write content to a file (for player implementation).
+/// Path is relative to workspace and sandboxed for security.
+pub struct DuoWriteFileTool {
+    workspace: std::path::PathBuf,
+}
+
+impl DuoWriteFileTool {
+    #[must_use]
+    pub fn new(workspace: std::path::PathBuf) -> Self {
+        Self { workspace }
+    }
+}
+
+#[async_trait]
+impl ToolSpec for DuoWriteFileTool {
+    fn name(&self) -> &'static str {
+        "duo_write_file"
+    }
+
+    fn description(&self) -> &'static str {
+        "Write content to a file in the workspace. Use this for the PLAYER to implement code files."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file (relative to workspace)"
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Content to write"
+                }
+            },
+            "required": ["path", "content"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::WritesFiles, ToolCapability::Sandboxable]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let path_str = required_str(&input, "path")?;
+        let file_content = required_str(&input, "content")?;
+
+        let file_path = self.workspace.join(path_str);
+
+        if let Some(parent) = file_path.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                ToolError::execution_failed(format!("Failed to create directory: {}", e))
+            })?;
+        }
+
+        tokio::fs::write(&file_path, file_content)
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Failed to write file: {}", e)))?;
+
+        Ok(ToolResult::success(format!(
+            "Wrote {} bytes to {}",
+            file_content.len(),
+            path_str
+        )))
+    }
+}
+
+/// Read a file from the workspace (for coach validation).
+pub struct DuoReadFileTool {
+    workspace: std::path::PathBuf,
+}
+
+impl DuoReadFileTool {
+    #[must_use]
+    pub fn new(workspace: std::path::PathBuf) -> Self {
+        Self { workspace }
+    }
+}
+
+#[async_trait]
+impl ToolSpec for DuoReadFileTool {
+    fn name(&self) -> &'static str {
+        "duo_read_file"
+    }
+
+    fn description(&self) -> &'static str {
+        "Read a file from the workspace. Use this for the COACH to validate implementation files."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the file (relative to workspace)"
+                }
+            },
+            "required": ["path"]
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let path_str = required_str(&input, "path")?;
+
+        let file_path = self.workspace.join(path_str);
+
+        let content = tokio::fs::read_to_string(&file_path)
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Failed to read file: {}", e)))?;
+
+        Ok(ToolResult::success(content))
+    }
+}
+
+/// List files in a directory (for context discovery).
+pub struct DuoListDirTool {
+    workspace: std::path::PathBuf,
+}
+
+impl DuoListDirTool {
+    #[must_use]
+    pub fn new(workspace: std::path::PathBuf) -> Self {
+        Self { workspace }
+    }
+}
+
+#[async_trait]
+impl ToolSpec for DuoListDirTool {
+    fn name(&self) -> &'static str {
+        "duo_list_dir"
+    }
+
+    fn description(&self) -> &'static str {
+        "List files in a directory. Use this to explore the workspace structure."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to directory (relative to workspace, default: .)"
+                }
+            },
+            "required": []
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::ReadOnly, ToolCapability::Sandboxable]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let path_str = optional_str(&input, "path").unwrap_or(".");
+        let dir_path = self.workspace.join(path_str);
+
+        let mut entries = Vec::new();
+
+        let mut stream = tokio::fs::read_dir(&dir_path)
+            .await
+            .map_err(|e| ToolError::execution_failed(format!("Failed to read directory: {}", e)))?;
+
+        while let Some(entry) = stream
+            .next_entry()
+            .await
+            .map_err(|e| ToolError::execution_failed(e.to_string()))?
+        {
+            let path = entry.path();
+            let file_name = path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("")
+                .to_string();
+            let file_type = entry
+                .file_type()
+                .await
+                .map_err(|e| ToolError::execution_failed(e.to_string()))?;
+
+            if !should_skip_file(&file_name) {
+                entries.push(json!({
+                    "name": file_name,
+                    "is_dir": file_type.is_dir(),
+                    "path": path.to_string_lossy().to_string()
+                }));
+            }
+        }
+
+        ToolResult::json(&entries).map_err(|e| ToolError::execution_failed(e.to_string()))
+    }
+}
+
+fn should_skip_file(file_name: &str) -> bool {
+    matches!(
+        file_name,
+        ".git"
+            | ".svn"
+            | ".idea"
+            | "target"
+            | "node_modules"
+            | "vendor"
+            | ".DS_Store"
+            | "Thumbs.db"
+            | ".minimax"
+            | "Cargo.lock"
+            | "package-lock.json"
+            | "yarn.lock"
+    )
+}
+
+#[cfg(test)]
+mod file_tool_tests {
+    use super::*;
+    use crate::tools::spec::ToolContext;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_duo_write_file_tool() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+        let tool = DuoWriteFileTool::new(workspace.clone());
+
+        let result = tool
+            .execute(
+                json!({"path": "test.txt", "content": "hello world"}),
+                &ToolContext::new(workspace),
+            )
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert!(result.content.contains("Wrote"));
+
+        let written = std::fs::read_to_string(tmp.path().join("test.txt")).expect("read");
+        assert_eq!(written, "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_duo_write_file_creates_dirs() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+        let tool = DuoWriteFileTool::new(workspace.clone());
+
+        let result = tool
+            .execute(
+                json!({"path": "subdir/nested/file.txt", "content": "nested content"}),
+                &ToolContext::new(workspace),
+            )
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+
+        let written =
+            std::fs::read_to_string(tmp.path().join("subdir/nested/file.txt")).expect("read");
+        assert_eq!(written, "nested content");
+    }
+
+    #[tokio::test]
+    async fn test_duo_read_file_tool() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+
+        std::fs::write(tmp.path().join("test.txt"), "hello world").expect("write");
+
+        let tool = DuoReadFileTool::new(workspace.clone());
+        let result = tool
+            .execute(json!({"path": "test.txt"}), &ToolContext::new(workspace))
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        assert_eq!(result.content, "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_duo_list_dir_tool() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+
+        std::fs::write(tmp.path().join("file1.txt"), "").expect("write");
+        std::fs::write(tmp.path().join("file2.txt"), "").expect("write");
+        std::fs::create_dir(tmp.path().join("subdir")).expect("mkdir");
+
+        let tool = DuoListDirTool::new(workspace.clone());
+        let result = tool
+            .execute(json!({}), &ToolContext::new(workspace))
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let entries: Vec<Value> = serde_json::from_str(&result.content).expect("parse");
+        assert!(entries.iter().any(|e| e["name"] == "file1.txt"));
+        assert!(entries.iter().any(|e| e["name"] == "file2.txt"));
+        assert!(
+            entries
+                .iter()
+                .any(|e| e["name"] == "subdir" && e["is_dir"] == true)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_duo_list_dir_filters_hidden() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+
+        std::fs::write(tmp.path().join("file.txt"), "").expect("write");
+        std::fs::create_dir(tmp.path().join("target")).expect("mkdir");
+        std::fs::write(tmp.path().join("target").join("lib.rs"), "").expect("write");
+
+        let tool = DuoListDirTool::new(workspace.clone());
+        let result = tool
+            .execute(json!({}), &ToolContext::new(workspace))
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let entries: Vec<Value> = serde_json::from_str(&result.content).expect("parse");
+        assert!(entries.iter().any(|e| e["name"] == "file.txt"));
+        assert!(!entries.iter().any(|e| e["name"] == "target"));
+    }
+
+    #[test]
+    fn test_duo_write_file_tool_properties() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+        let tool = DuoWriteFileTool::new(workspace.clone());
+
+        assert_eq!(tool.name(), "duo_write_file");
+        assert!(!tool.is_read_only());
+        assert!(tool.is_sandboxable());
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+
+    #[test]
+    fn test_duo_read_file_tool_properties() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+        let tool = DuoReadFileTool::new(workspace.clone());
+
+        assert_eq!(tool.name(), "duo_read_file");
+        assert!(tool.is_read_only());
+        assert!(tool.is_sandboxable());
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+
+    #[test]
+    fn test_duo_list_dir_tool_properties() {
+        let tmp = tempdir().expect("tempdir");
+        let workspace = tmp.path().to_path_buf();
+        let tool = DuoListDirTool::new(workspace.clone());
+
+        assert_eq!(tool.name(), "duo_list_dir");
+        assert!(tool.is_read_only());
+        assert!(tool.is_sandboxable());
+        assert_eq!(tool.approval_requirement(), ApprovalRequirement::Auto);
+    }
+
+    #[test]
+    fn test_should_skip_file() {
+        assert!(should_skip_file(".git"));
+        assert!(should_skip_file("target"));
+        assert!(should_skip_file("node_modules"));
+        assert!(should_skip_file("Cargo.lock"));
+        assert!(!should_skip_file("src"));
+        assert!(!should_skip_file("main.rs"));
+    }
+}

@@ -106,6 +106,10 @@ pub struct Config {
     /// Lifecycle hooks configuration
     #[serde(default)]
     pub hooks: Option<HooksConfig>,
+
+    /// Custom model context windows (model name -> context size in tokens)
+    #[serde(default)]
+    pub model_context_windows_raw: Option<std::collections::HashMap<String, u32>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -277,6 +281,21 @@ impl Config {
             features.apply_map(&table.entries);
         }
         features
+    }
+
+    /// Get custom model context windows merged with defaults.
+    /// Returns a HashMap containing custom contexts merged with built-in defaults.
+    #[must_use]
+    pub fn model_context_windows(&self) -> std::collections::HashMap<String, u32> {
+        let mut windows = std::collections::HashMap::new();
+
+        if let Some(custom) = &self.model_context_windows_raw {
+            for (model, size) in custom {
+                windows.insert(model.clone(), *size);
+            }
+        }
+
+        windows
     }
 
     pub fn set_feature(&mut self, key: &str, enabled: bool) -> Result<()> {
@@ -569,6 +588,9 @@ fn apply_env_overrides(config: &mut Config) {
     {
         config.max_subagents = Some(parsed.clamp(1, 5));
     }
+    if let Ok(value) = std::env::var("MINIMAX_MODEL_CONTEXT_WINDOWS") {
+        config.model_context_windows_raw = Some(parse_model_context_windows(&value));
+    }
 }
 
 fn normalize_base_url(base: &str) -> String {
@@ -584,6 +606,23 @@ fn normalize_base_url(base: &str) -> String {
             .to_string();
     }
     trimmed.to_string()
+}
+
+fn parse_model_context_windows(value: &str) -> std::collections::HashMap<String, u32> {
+    let mut map = std::collections::HashMap::new();
+    for pair in value.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        if let Some((key, val)) = pair.split_once(':') {
+            let key = key.trim().to_string();
+            if let Ok(context_size) = val.trim().parse::<u32>() {
+                map.insert(key, context_size);
+            }
+        }
+    }
+    map
 }
 
 fn apply_profile(config: ConfigFile, profile: Option<&str>) -> Result<Config> {
@@ -658,6 +697,9 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
         retry: override_cfg.retry.or(base.retry),
         features: override_cfg.features.or(base.features),
         hooks: override_cfg.hooks.or(base.hooks),
+        model_context_windows_raw: override_cfg
+            .model_context_windows_raw
+            .or(base.model_context_windows_raw),
     }
 }
 

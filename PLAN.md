@@ -1,286 +1,439 @@
-# Duo Mode Implementation Plan
+# Comprehensive Test Plan for minimax-cli
 
-## Current State
+## Current State (as of v0.6.0)
 
-### Implemented ✅
-- State machine (`DuoPhase`, `DuoStatus`, `DuoState`)
-- 5 Duo tools with full schemas (`duo_init`, `duo_player`, `duo_coach`, `duo_advance`, `duo_status`)
-- Configuration system (`DuoConfig`)
-- Prompt generation (player/coach)
-- 24 unit tests (all passing)
-- CLI command structures
-- TUI mode integration (`AppMode::Duo`)
+### Test Coverage
+- ✅ 1 test file: `tests/palette_audit.rs` (color palette validation)
+- ❌ No unit tests for core functionality
+- ❌ No integration tests for workflows
+- ❌ No API mocking in tests
 
-### Phase 1 Complete ✅
-- **`run_duo_workflow()` connected to LLM API**
-  - Function now uses actual `AnthropicClient` for API calls
-  - Complete player-coach loop logic implemented
-  - Callback-based progress reporting via `EngineEvent::Status`
-  - Streaming and non-streaming responses supported
-
-- **File system integration**
-  - `read_file()` - read existing code files for validation
-  - `write_file()` - save generated code
-  - `list_files()` - explore workspace with filtering
-  - `validate_path()` - security sandboxing
-  - File filtering for common build artifacts
-
-- **Session persistence**
-  - `save_session()` - save session to `~/.minimax/sessions/duo/`
-  - `load_session()` - load session from disk
-  - `list_sessions()` - list all saved sessions
-  - `delete_session()` - delete a saved session
-  - JSON serialization using serde
-
-- **CLI command handlers**
-  - `minimax duo start` - Parse requirements file, start workflow, auto-save
-  - `minimax duo continue <id>` - Resume session by ID
-  - `minimax duo sessions` - List saved sessions from disk
-  - Full error handling and user feedback
-
-- **Progress reporting**
-  - Phase transitions reported via engine events
-  - Display current phase (Player/Coach) in status
-  - Show quality scores and feedback
-  - Integration with existing session management
-
-### Phase 2 Complete ✅
-- **Session persistence to `~/.minimax/sessions/duo/`**
-  - `save_session()`, `load_session()`, `list_sessions()`, `delete_session()`
-  - Auto-save after each turn
-  - JSON serialization using serde
-  - CLI commands: `minimax duo start`, `minimax duo continue`, `minimax duo sessions`
-
-### Phase 3 Complete ✅
-- **DuoView modal component** (`src/tui/views/duo_view.rs` - 412 lines)
-  - Phase indicator with color coding
-  - Turn counter and progress bar
-  - Quality scores visualization
-  - Feedback history display
-  - Loop visualization showing Player ↔ Coach progression
-
-- **DuoSessionPicker session browser** (`src/tui/duo_session_picker.rs` - 550 lines)
-  - Fuzzy search of saved sessions
-  - Session metadata display (phase, turns, quality)
-  - Resume capability
-
-- **Footer progress indicator** in `ui.rs`
-  - Shows: `🎮 Player Phase (Turn 2/10)` or `🏆 Coach Phase (Turn 2/10)`
-
----
-
-## Implementation Plan
-
-### Phase 1: Workflow Execution ✅ COMPLETE
-
-#### Goal
-Connect `run_duo_workflow()` to actual LLM API calls using the existing `AnthropicClient` with file system integration.
-
-#### Strategy
-- Use existing `AnthropicClient` infrastructure
-- Implement file I/O for code generation and validation
-- Display progress in TUI via engine events
-
-#### Tasks ✅ Complete
-
-1. **Update `run_duo_workflow()` function** (`src/duo.rs`)
-   - Remove `#[allow(dead_code)]` attribute
-   - Replace placeholder API calls with actual `AnthropicClient::create_message()` calls
-   - Add file I/O callbacks for reading/writing code files
-   - Implement progress callback to TUI via `EngineEvent::Status`
-   - Handle streaming vs non-streaming responses
-
-2. **Add file system integration** (`src/duo.rs`)
-   - Create helper functions:
-     - `read_file(path)` - read existing code files
-     - `write_file(path, content)` - save generated code
-     - `list_files(directory)` - explore workspace
-     - `validate_path(path, workspace)` - security sandboxing
-   - Implement file sandboxing (limit to workspace directory)
-
-3. **Connect to existing client** (`src/duo.rs`)
-   - Use `AnthropicClient` from `src/client.rs`
-   - Leverage existing `MessageRequest` and `Message` types
-   - Use coding model (`MiniMax-M2.1-Coding`)
-   - Handle streaming vs non-streaming modes
-
-4. **Progress reporting** (`src/core/engine.rs`)
-   - Map progress callbacks to `EngineEvent::Status` messages
-   - Display current phase (Player/Coach) in TUI footer
-   - Show quality scores and feedback in status line
-   - Integrate with existing session management
-
-5. **Implement CLI handlers** (`src/main.rs`)
-   - `DuoSubcommand::Start` - Parse requirements file, start workflow
-   - `DuoSubcommand::Continue` - Resume session by ID
-   - `DuoSubcommand::Sessions` - List saved sessions from disk
-   - Proper error handling and user feedback
-
----
-
-### Phase 2: Session Persistence ✅ COMPLETE
-
-#### Tasks ✅ Complete
-
-1. **Session serialization** (`src/duo.rs`)
-   - Add `save_session(session, path)` function
-   - Add `load_session(path)` function
-   - Use JSON serialization (serde already available)
-   - Store in `~/.minimax/sessions/duo/`
-
-2. **Session management**
-   - Add `list_sessions()` to list saved sessions
-   - Add `delete_session(session_id)` for cleanup
-   - Support session resume by ID
-
-3. **CLI integration**
-   - `minimax duo sessions` - List sessions from disk
-   - `minimax duo continue <id>` - Load and resume session
-   - Auto-save sessions after each turn
-
----
-
-### Phase 3: TUI View ✅ COMPLETE
-
-#### Tasks ✅ Complete
-
-1. **Duo mode screen** (`src/tui/ui.rs`)
-   - Add `render_duo_mode()` function
-   - Display player-coach loop visualization
-   - Show current phase with color coding
-   - Display quality scores and progress
-
-2. **Session browser** (`src/tui/session_picker.rs` or new file)
-   - List saved Duo sessions
-   - Show session metadata (status, phase, turns)
-   - Select session to resume
-
-3. **Progress indicator**
-   - Show phase in footer: `🎮 Player Phase (Turn 2/10)`
-   - Display coach feedback in modal
-   - Show approval status with icons
-
----
-
-### Phase 4: File System Integration
-
-#### Tasks
-
-1. **Code generation workflow**
-   - Player writes code to workspace files
-   - Coach reads files for validation
-   - Implement diff-based updates
-
-2. **File operations**
-   - `read_file()` for coach validation
-   - `write_file()` for player implementation
-   - `list_directory()` for context
-   - File filtering (skip `.git`, `target`, etc.)
-
-3. **Security**
-   - Path validation and sandboxing
-   - File size limits
-   - Approval for dangerous operations
-
----
-
-## File Structure
-
-```
- src/
- ├── duo.rs                    # State machine + workflow + session persistence
- ├── tools/duo.rs              # Tool definitions (already complete)
- ├── config.rs                 # Config (already complete)
- ├── core/
- │   ├── engine.rs            # Engine integration (extended for progress)
- │   ├── events.rs            # Event types
- │   └── ops.rs               # Operations
- ├── tui/
- │   ├── app.rs               # App state (already has Duo mode)
- │   ├── ui.rs                # Rendering (Duo footer progress indicator)
- │   ├── duo_session_picker.rs # Session browser with fuzzy search (550 lines)
- │   └── views/
- │       └── duo_view.rs      # Duo modal component (412 lines)
- ├── main.rs                  # CLI handlers (extended with full implementation)
- └── prompts.rs               # System prompts (already has DUO_PROMPT)
-```
-
----
-
-## Key Design Decisions
-
-1. **Reuse existing infrastructure**
-   - Use `AnthropicClient` for API calls
-   - Leverage `MessageRequest` and `Message` types
-   - Use `EngineEvent::Status` for progress
-   - Follow existing patterns in `src/rlm/`
-
-2. **Security first**
-   - File operations sandboxed to workspace
-   - Path validation before all file I/O
-   - No arbitrary file system access
-
-3. **Progress reporting**
-   - All phases reported via engine events
-   - TUI can choose what to display
-   - Consistent with other modes
-
-4. **Session persistence**
-   - JSON format for human readability
-   - Store in standard config directory
-   - Support resume by ID or prefix
-
----
-
-## Acceptance Criteria
-
-### Phase 1: Workflow Execution ✅ COMPLETE
-- [x] `minimax duo start --requirements docs/requirements.md` works
-- [x] Player phase generates code and advances to Coach
-- [x] Coach phase validates and provides feedback
-- [x] Loop continues until approval or timeout
-- [x] Progress displayed in TUI status line
-- [x] Code files can be written to workspace
-- [x] Session auto-saves to disk
-- [x] `minimax duo sessions` lists saved sessions
-- [x] `minimax duo continue <id>` resumes session
-- [x] Sessions persist across CLI invocations
-
-### Phase 2: Session Persistence ✅ COMPLETE
-- [x] Sessions saved to `~/.minimax/sessions/duo/` as JSON
-- [x] Auto-save after each turn
-- [x] `list_sessions()` and `delete_session()` work
-- [x] CLI commands: `duo start`, `duo continue`, `duo sessions`
-
-### Phase 3: TUI View ✅ COMPLETE
-- [x] DuoView modal with phase color coding, turn counter, progress bar, quality scores, feedback history, loop visualization
-- [x] DuoSessionPicker with fuzzy search, metadata preview, resume capability
-- [x] Footer progress indicator shows phase and turn
+### Key Modules Without Tests
+- Config loading and parsing
+- Session state management
+- Core engine orchestration
+- All tool implementations
+- Feature flags
+- RLM context handling
+- Duo state machine (only 24 unit tests exist)
 
 ---
 
 ## Testing Strategy
 
-1. **Unit tests** (already exist - 24 tests in duo.rs)
-   - State transitions
-   - Prompt generation
-   - Tool schemas
+### Approach: Integration-First with Unit Coverage
 
-2. **Integration tests** (new)
-   - Full workflow with mocked API
-   - File I/O operations
-   - CLI command execution
+1. **Start with integration tests** for critical workflows
+2. **Add unit tests** for individual functions/types
+3. **Use property-based testing** for state machines
+4. **Add API mocking** with wiremock for HTTP interactions
 
-3. **E2E tests** (new)
-   - Complete player-coach loop
-   - Session persistence
-   - TUI rendering
+---
+
+## Test Structure
+
+```
+tests/
+├── common.rs                 # Test utilities (temp dirs, fixtures)
+├── config_tests.rs           # Config loading & parsing
+├── session_tests.rs          # Session state management
+├── engine_tests.rs           # Core engine orchestration
+├── features_tests.rs         # Feature flags
+├── workspace_tests.rs        # Path safety & sandboxing
+├── utils_tests.rs            # Helper functions
+├── palette_audit.rs          # Color audit (existing)
+├── tools/
+│   ├── file_tests.rs         # File operations
+│   ├── shell_tests.rs        # Shell execution
+│   ├── web_search_tests.rs   # Web tools
+│   ├── subagent_tests.rs     # Subagent tools
+│   ├── memory_tests.rs       # Memory tools
+│   └── ...
+├── state_machines/
+│   ├── duo_state_tests.rs    # Duo state machine
+│   └── rlm_context_tests.rs  # RLM context
+└── e2e_tests.rs              # End-to-end workflows
+```
+
+---
+
+## Phase 1: Core Module Tests
+
+### 1.1 Config Module (`tests/config_tests.rs`)
+
+**Coverage**:
+- Config loading from file
+- Config loading from environment variables
+- Profile selection
+- API key resolution
+- Default value application
+- Feature flag parsing
+- Retry policy calculation
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Missing config file → fallback to defaults
+- Invalid TOML → proper error
+- Environment variable overrides
+- Profile not found → error
+- Multiple profiles in one config
+```
+
+---
+
+### 1.2 Session Module (`tests/session_tests.rs`)
+
+**Coverage**:
+- Session creation with/without project context
+- Message history management
+- Token usage tracking
+- Session persistence
+- Pinned messages
+- Project context loading
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- New session initialization
+- Adding messages to history
+- Usage aggregation
+- Project context from AGENTS.md
+- Empty workspace (no context)
+```
+
+---
+
+### 1.3 Engine Module (`tests/engine_tests.rs`)
+
+**Coverage**:
+- Tool registry construction
+- Tool execution orchestration
+- Feature flag filtering
+- Approval workflows
+- Parallel tool execution
+- Context compaction triggers
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Registering tools
+- Looking up tools by name
+- Feature-gated tool visibility
+- Parallel vs sequential execution
+- Compaction thresholds
+```
+
+---
+
+### 1.4 Feature Flags (`tests/features_tests.rs`)
+
+**Coverage**:
+- Feature activation/deactivation
+- Default feature set
+- Feature dependencies
+- Unknown feature keys
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Enabling/disabling features
+- Feature-dependent tool availability
+- Invalid feature names → graceful handling
+```
+
+---
+
+## Phase 2: Tool Implementation Tests
+
+### 2.1 File Tools (`tests/tools/file_tests.rs`)
+
+**Coverage**:
+- `ReadFileTool`: valid files, missing files, path traversal prevention
+- `WriteFileTool`: valid writes, path validation, directory creation
+- `EditFileTool`: search/replace, no matches, empty search
+- `ListDirTool`: valid dirs, empty dirs, permissions
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Path traversal attacks → blocked
+- Workspace boundary enforcement
+- Non-existent files → errors
+- Empty content handling
+- Permission errors
+```
+
+---
+
+### 2.2 Shell Tools (`tests/tools/shell_tests.rs`)
+
+**Coverage**:
+- `ExecShellTool`: successful commands, failed commands
+- Shell execution with/without approval
+- Timeout handling
+- Output capture
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Valid commands (echo, pwd)
+- Invalid commands (exit 1)
+- Shell execution disabled → blocked
+- Long-running commands → timeout
+```
+
+---
+
+### 2.3 Web Search Tools (`tests/tools/web_search_tests.rs`)
+
+**Coverage**:
+- `WebSearchTool`: mock HTTP responses
+- `WebFetchTool`: HTML parsing
+- Rate limiting handling
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Successful search
+- No results
+- Network errors
+- HTML parsing edge cases
+```
+
+---
+
+### 2.4 Subagent Tools (`tests/tools/subagent_tests.rs`)
+
+**Coverage**:
+- Subagent creation
+- Concurrency limits
+- Resource cleanup
+
+---
+
+### 2.5 Memory Tools (`tests/tools/memory_tests.rs`)
+
+**Coverage**:
+- Save/retrieve memory entries
+- Memory persistence
+- Query filtering
+
+---
+
+## Phase 3: State Machine Tests (Property-Based)
+
+### 3.1 Duo State Machine (`tests/state_machines/duo_state_tests.rs`)
+
+**Coverage**:
+- Phase transitions (Init → Player → Coach → Approved)
+- Invalid transitions rejected
+- Max turns reached (timeout)
+- Quality score calculation
+
+**Approach**: Use `proptest` for property-based testing
+
+**Key Properties**:
+```rust
+// Test properties:
+- Cannot advance from Approved/Timeout
+- Valid phase sequence enforcement
+- Turn counting accuracy
+- Quality score averaging
+- Session persistence roundtrip
+```
+
+**Example Tests**:
+```rust
+// Property: Valid phase sequence
+proptest! {
+    #[test]
+    fn valid_phase_sequence(state in duo_state_strategy()) {
+        // State machine should only allow valid transitions
+    }
+}
+
+// Property: Turn counting
+proptest! {
+    #[test]
+    fn turn_counting(state in duo_state_strategy()) {
+        // Turn counter must match history length
+    }
+}
+```
+
+---
+
+### 3.2 RLM Context (`tests/state_machines/rlm_context_tests.rs`)
+
+**Coverage**:
+- Context loading from files
+- Search with regex
+- Chunking with overlap
+- Variable storage/retrieval
+
+**Key Scenarios**:
+```rust
+// Test cases:
+- Large file chunking
+- Regex search edge cases
+- Context overflow handling
+- Variable persistence
+```
+
+---
+
+## Phase 4: Integration Tests
+
+### 4.1 Workspace Safety (`tests/workspace_tests.rs`)
+
+**Coverage**:
+- Path resolution within workspace
+- Absolute path rejection (outside workspace)
+- Trust mode bypass
+- File operations outside workspace → blocked
+
+---
+
+### 4.2 End-to-End Tests (`tests/e2e_tests.rs`)
+
+**Coverage**:
+- Full chat session (user prompt → AI response)
+- Tool execution workflow (AI → tool call → result)
+- Multi-turn conversations with context
+- Session resume from saved state
+
+**Note**: May need wiremock for API mocking
+
+---
+
+## Test Infrastructure
+
+### Common Utilities (`tests/common.rs`)
+
+```rust
+// Available functions:
+- temp_workspace() → create temp directory for tests
+- mock_config() → create test config
+- fixture_path() → load test fixtures
+- assert_json_snapshot() → JSON comparison
+- test_client() → HTTP client for tests
+- write_test_file() → create test file
+- read_test_file() → read test file
+```
+
+---
+
+## Implementation Schedule
+
+### Week 1: Core Modules
+- [ ] Config tests
+- [ ] Session tests
+- [ ] Utils tests
+- [ ] Common utilities
+
+### Week 2: Tool Tests
+- [ ] File tools tests
+- [ ] Shell tools tests
+- [ ] Web search tools tests
+- [ ] Subagent tests
+
+### Week 3: Feature Flags & Engine
+- [ ] Feature flags tests
+- [ ] Engine integration tests
+- [ ] Workspace safety tests
+
+### Week 4: State Machines
+- [ ] Duo state machine tests (property-based)
+- [ ] RLM context tests
+
+### Week 5: E2E & Coverage
+- [ ] End-to-end tests
+- [ ] Test coverage reporting
+- [ ] CI integration
+
+---
+
+## Coverage Goals
+
+| Module | Target Coverage | Test Type |
+|--------|----------------|-----------|
+| Config | 90% | Integration |
+| Session | 85% | Integration |
+| Engine | 80% | Integration |
+| Tools | 85% | Unit + Integration |
+| Features | 95% | Unit |
+| Utils | 90% | Unit |
+| RLM/Duo | 75% | Property-based |
+| E2E | 70% | Integration |
+
+---
+
+## Tools & Dependencies
+
+### Existing Dev Dependencies
+- `pretty_assertions` - Better assertion messages
+- `wiremock` - HTTP server mocking
+
+### New Dependencies (to add)
+```toml
+[dev-dependencies]
+proptest = "1.0"          # Property-based testing
+tempfile = "3.16"         # Temp directory management
+insta = "1.0"             # Snapshot testing (optional)
+```
+
+---
+
+## CI Integration
+
+### Add to `.github/workflows/ci.yml`
+```yaml
+test-coverage:
+  name: Test Coverage
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        components: llvm-tools-preview
+    - uses: Swatinem/rust-cache@v2
+    - name: Install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov
+    - name: Generate coverage
+      run: cargo llvm-cov --all-features --html
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: target/llvm-cov/html
+```
+
+---
+
+## Success Metrics
+
+### Minimum Viable Test Suite
+- ✅ 100+ unit/integration tests
+- ✅ Config, Session, Engine coverage
+- ✅ Core tools tested
+- ✅ Duo state machine property tests
+- ✅ CI pipeline passing
+
+### stretch Goals
+- 🎯 80%+ code coverage
+- 🎯 Property-based tests for state machines
+- 🎯 Snapshot testing for UI outputs
+- 🎯 E2E test suite
 
 ---
 
 ## Notes
 
-- The `run_duo_workflow()` function signature uses async callbacks
-- Need to handle both streaming and non-streaming API responses
-- Coach must read implementation files to validate
-- File operations must be thread-safe with the rest of the engine
+- Start with integration tests for critical paths
+- Add unit tests for complex logic
+- Use wiremock for API mocking
+- Property-based tests for state machines
+- Test workspace boundary security rigorously
+- Ensure all tools test approval workflows

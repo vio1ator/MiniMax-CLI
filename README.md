@@ -54,12 +54,17 @@ api_key = "YOUR_MINIMAX_API_KEY"   # must be non-empty
 default_text_model = "MiniMax-M2.1" # optional
 allow_shell = false                 # optional
 max_subagents = 3                   # optional (1-5)
+
+# Optional: Configure custom model context windows (for self-hosted models)
+[model_context_windows]
+"my-custom-model" = 128000
 ```
 
 Useful environment variables:
 
 - `MINIMAX_API_KEY` (overrides `api_key`)
 - `MINIMAX_BASE_URL` (default: `https://api.minimax.io`; China users may use `https://api.minimaxi.com`)
+- `MINIMAX_MODEL_CONTEXT_WINDOWS` (custom model contexts, format: `model1:context1,model2:context2`)
 - `MINIMAX_PROFILE` (selects `[profiles.<name>]` from the config; errors if missing)
 - `MINIMAX_CONFIG_PATH` (override config path)
 - `MINIMAX_MCP_CONFIG`, `MINIMAX_SKILLS_DIR`, `MINIMAX_NOTES_PATH`, `MINIMAX_MEMORY_PATH`, `MINIMAX_ALLOW_SHELL`, `MINIMAX_MAX_SUBAGENTS`

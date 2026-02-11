@@ -9,15 +9,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::config::{has_api_key, save_api_key, Config};
-use crate::duo::{new_shared_duo_session, SharedDuoSession};
+use crate::config::{Config, has_api_key, save_api_key};
+use crate::duo::{SharedDuoSession, new_shared_duo_session};
 use crate::hooks::{HookContext, HookEvent, HookExecutor, HookResult};
 use crate::models::{Message, SystemPrompt};
 use crate::palette::{self, UiTheme};
 use crate::rlm::{RlmSession, SharedRlmSession};
 use crate::settings::Settings;
-use crate::tools::plan::{new_shared_plan_state, SharedPlanState};
-use crate::tools::todo::{new_shared_todo_list, SharedTodoList};
+use crate::tools::plan::{SharedPlanState, new_shared_plan_state};
+use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
 use crate::tui::approval::ApprovalMode;
 use crate::tui::clipboard::{ClipboardContent, ClipboardHandler};
 use crate::tui::fuzzy_picker::FuzzyPicker;
@@ -314,6 +314,8 @@ pub struct App {
     pub suggestion_engine: SuggestionEngine,
     /// Pinned messages for quick reference (max 5)
     pub pinned_messages: Vec<PinnedMessage>,
+    /// Custom model context windows from config
+    pub custom_context_windows: std::collections::HashMap<String, u32>,
     /// Cached search results
     pub search_results: Vec<SearchResult>,
     /// Current search result index
@@ -583,6 +585,7 @@ impl App {
             tutorial: Tutorial::new(settings.show_tutorial),
             suggestion_engine: SuggestionEngine::new(),
             pinned_messages: Vec::new(),
+            custom_context_windows: config.model_context_windows(),
             search_results: Vec::new(),
             current_search_idx: None,
             search_query: String::new(),
@@ -712,37 +715,21 @@ impl App {
             AppMode::Agent => {
                 // file(4) + search(1) + todo(1) + plan(1) + note(1) + web(1) + patch(1) + subagent(1) = 11
                 let base = 11;
-                if self.allow_shell {
-                    base + 3
-                } else {
-                    base
-                }
+                if self.allow_shell { base + 3 } else { base }
             }
             AppMode::Yolo => {
                 let base = 11;
-                if self.allow_shell {
-                    base + 3
-                } else {
-                    base
-                }
+                if self.allow_shell { base + 3 } else { base }
             }
             AppMode::Rlm => {
                 // base(11) + 4 RLM tools + subagent(1) = 16
                 let base = 16;
-                if self.allow_shell {
-                    base + 3
-                } else {
-                    base
-                }
+                if self.allow_shell { base + 3 } else { base }
             }
             AppMode::Duo => {
                 // base(11) + 2 duo tools + subagent(1) = 14
                 let base = 14;
-                if self.allow_shell {
-                    base + 3
-                } else {
-                    base
-                }
+                if self.allow_shell { base + 3 } else { base }
             }
         };
 
@@ -1332,10 +1319,11 @@ mod tests {
         let mut app = App::new(test_options(false), &Config::default());
         app.toggle_shell_mode();
         assert!(app.shell_mode);
-        assert!(app
-            .status_message
-            .as_deref()
-            .is_some_and(|s| s.contains("Shell mode enabled")));
+        assert!(
+            app.status_message
+                .as_deref()
+                .is_some_and(|s| s.contains("Shell mode enabled"))
+        );
         app.toggle_shell_mode();
         assert!(!app.shell_mode);
     }

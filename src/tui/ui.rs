@@ -853,13 +853,13 @@ async fn run_event_loop(
                     app.scroll_down(page);
                 }
                 KeyCode::Tab => {
-                     app.cycle_mode();
-                     if app.mode == AppMode::Rlm {
-                         app.rlm_repl_active = false;
-                     } else if app.mode == AppMode::Duo && app.view_stack.is_empty() {
-                         app.view_stack.push(DuoView::new(app.duo_session.clone()));
-                     }
-                 }
+                    app.cycle_mode();
+                    if app.mode == AppMode::Rlm {
+                        app.rlm_repl_active = false;
+                    } else if app.mode == AppMode::Duo && app.view_stack.is_empty() {
+                        app.view_stack.push(DuoView::new(app.duo_session.clone()));
+                    }
+                }
                 // Input handling
                 KeyCode::Enter if key.modifiers.contains(KeyModifiers::ALT) => {
                     // Alt+Enter: Insert newline for multiline input
@@ -991,14 +991,18 @@ async fn run_event_loop(
                                                                 "duo" => AppMode::Duo,
                                                                 "plan" => AppMode::Plan,
                                                                 _ => AppMode::Normal,
-                                                             };
-                                                         app.set_mode(mode);
+                                                            };
+                                                        app.set_mode(mode);
 
-                                                         if mode == AppMode::Duo && app.view_stack.is_empty() {
-                                                             app.view_stack.push(DuoView::new(app.duo_session.clone()));
-                                                         }
+                                                        if mode == AppMode::Duo
+                                                            && app.view_stack.is_empty()
+                                                        {
+                                                            app.view_stack.push(DuoView::new(
+                                                                app.duo_session.clone(),
+                                                            ));
+                                                        }
 
-                                                         app.add_message(HistoryCell::System {
+                                                        app.add_message(HistoryCell::System {
                                                              content: "Configuration reloaded successfully.".to_string(),
                                                          });
                                                     }
@@ -2031,6 +2035,7 @@ fn render(f: &mut Frame, app: &mut App) {
             app.total_conversation_tokens,
             app.is_loading,
             app.ui_theme.header_bg,
+            app.custom_context_windows.clone(),
         )
         .with_shell_mode(app.shell_mode)
         .with_pins(app.list_pins());
@@ -2233,59 +2238,60 @@ async fn handle_view_events(app: &mut App, engine_handle: &EngineHandle, events:
                     crate::tui::model_picker::ModelPickerResult::Cancelled => {}
                 }
             }
-             ViewEvent::SearchResultSelected { result } => {
-                 // Scroll to the selected search result
-                 app.transcript_scroll = super::scrolling::TranscriptScroll::Scrolled {
-                     cell_index: result.cell_index,
-                     line_in_cell: 0,
-                 };
-             }
-             ViewEvent::DuoSessionSelected { session_id } => {
-                  // Resume Duo session by ID
-                  app.add_message(HistoryCell::System {
-                      content: format!("Resumed Duo session: {}", &session_id[..8]),
-                  });
-              }
-              ViewEvent::DuoSessionPickerResult { result } => {
-                  match result {
-                      crate::tui::duo_session_picker::DuoSessionPickerResult::Selected(session_id) => {
-                          let rt = tokio::runtime::Runtime::new().unwrap();
-                          if let Ok(session) = rt.block_on(async {
-                              crate::duo::load_session(&session_id).await
-                          }) {
-                              let state_loaded = {
-                                  let mut duo_session = app.duo_session.lock().unwrap();
-                                  if let Some(state) = session.active_state {
-                                      duo_session.start_session(
-                                          state.requirements.clone(),
-                                          state.session_name.clone(),
-                                          Some(state.max_turns),
-                                          Some(state.approval_threshold),
-                                      );
-                                      true
-                                  } else {
-                                      false
-                                  }
-                              };
-                              if state_loaded {
-                                  app.add_message(HistoryCell::System {
-                                      content: format!("Loaded Duo session: {}", &session_id[..8]),
-                                  });
-                              } else {
-                                  app.add_message(HistoryCell::System {
-                                      content: format!("No active state in Duo session: {}", &session_id[..8]),
-                                  });
-                              }
-                          } else {
-                              app.add_message(HistoryCell::System {
-                                  content: format!("Failed to load Duo session: {}", &session_id[..8]),
-                              });
-                          }
-                      }
-                      crate::tui::duo_session_picker::DuoSessionPickerResult::Cancelled => {}
-                  }
-              }
-          }
+            ViewEvent::SearchResultSelected { result } => {
+                // Scroll to the selected search result
+                app.transcript_scroll = super::scrolling::TranscriptScroll::Scrolled {
+                    cell_index: result.cell_index,
+                    line_in_cell: 0,
+                };
+            }
+            ViewEvent::DuoSessionSelected { session_id } => {
+                // Resume Duo session by ID
+                app.add_message(HistoryCell::System {
+                    content: format!("Resumed Duo session: {}", &session_id[..8]),
+                });
+            }
+            ViewEvent::DuoSessionPickerResult { result } => match result {
+                crate::tui::duo_session_picker::DuoSessionPickerResult::Selected(session_id) => {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+                    if let Ok(session) =
+                        rt.block_on(async { crate::duo::load_session(&session_id).await })
+                    {
+                        let state_loaded = {
+                            let mut duo_session = app.duo_session.lock().unwrap();
+                            if let Some(state) = session.active_state {
+                                duo_session.start_session(
+                                    state.requirements.clone(),
+                                    state.session_name.clone(),
+                                    Some(state.max_turns),
+                                    Some(state.approval_threshold),
+                                );
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if state_loaded {
+                            app.add_message(HistoryCell::System {
+                                content: format!("Loaded Duo session: {}", &session_id[..8]),
+                            });
+                        } else {
+                            app.add_message(HistoryCell::System {
+                                content: format!(
+                                    "No active state in Duo session: {}",
+                                    &session_id[..8]
+                                ),
+                            });
+                        }
+                    } else {
+                        app.add_message(HistoryCell::System {
+                            content: format!("Failed to load Duo session: {}", &session_id[..8]),
+                        });
+                    }
+                }
+                crate::tui::duo_session_picker::DuoSessionPickerResult::Cancelled => {}
+            },
+        }
     }
 }
 
@@ -2452,31 +2458,40 @@ fn duo_mode_indicator(app: &App) -> Option<(String, Style)> {
 
     let (phase_icon, phase_name, phase_style) = match state.phase {
         DuoPhase::Init => ("🎮", "Init", Style::default().fg(palette::MINIMAX_ORANGE)),
-        DuoPhase::Player => ("🎮", "Player", Style::default().fg(palette::MINIMAX_BLUE).add_modifier(Modifier::BOLD)),
-        DuoPhase::Coach => ("🏆", "Coach", Style::default().fg(palette::MINIMAX_MAGENTA).add_modifier(Modifier::BOLD)),
-        DuoPhase::Approved => ("✅", "Approved", Style::default().fg(palette::MINIMAX_GREEN)),
+        DuoPhase::Player => (
+            "🎮",
+            "Player",
+            Style::default()
+                .fg(palette::MINIMAX_BLUE)
+                .add_modifier(Modifier::BOLD),
+        ),
+        DuoPhase::Coach => (
+            "🏆",
+            "Coach",
+            Style::default()
+                .fg(palette::MINIMAX_MAGENTA)
+                .add_modifier(Modifier::BOLD),
+        ),
+        DuoPhase::Approved => (
+            "✅",
+            "Approved",
+            Style::default().fg(palette::MINIMAX_GREEN),
+        ),
         DuoPhase::Timeout => ("⏰", "Timeout", Style::default().fg(palette::MINIMAX_RED)),
     };
 
-    let approval_indicator = if matches!(state.phase, DuoPhase::Coach) && state.average_quality_score().is_some() {
-        let score = state.average_quality_score().unwrap_or(0.0);
-        let threshold = state.approval_threshold;
-        if score >= threshold {
-            " ✓"
+    let approval_indicator =
+        if matches!(state.phase, DuoPhase::Coach) && state.average_quality_score().is_some() {
+            let score = state.average_quality_score().unwrap_or(0.0);
+            let threshold = state.approval_threshold;
+            if score >= threshold { " ✓" } else { "" }
         } else {
             ""
-        }
-    } else {
-        ""
-    };
+        };
 
     let label = format!(
         "{} {} Phase (Turn {}/{}){}",
-        phase_icon,
-        phase_name,
-        state.current_turn,
-        state.max_turns,
-        approval_indicator
+        phase_icon, phase_name, state.current_turn, state.max_turns, approval_indicator
     );
 
     Some((label, phase_style))

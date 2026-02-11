@@ -180,7 +180,10 @@ impl DuoSessionPicker {
 
     fn format_phase(&self, phase: DuoPhase) -> (String, Style) {
         match phase {
-            DuoPhase::Init => ("Init".to_string(), Style::default().fg(palette::MINIMAX_ORANGE)),
+            DuoPhase::Init => (
+                "Init".to_string(),
+                Style::default().fg(palette::MINIMAX_ORANGE),
+            ),
             DuoPhase::Player => (
                 "Player".to_string(),
                 Style::default()
@@ -193,8 +196,14 @@ impl DuoSessionPicker {
                     .fg(palette::MINIMAX_MAGENTA)
                     .add_modifier(Modifier::BOLD),
             ),
-            DuoPhase::Approved => ("✓ Approved".to_string(), Style::default().fg(palette::MINIMAX_GREEN)),
-            DuoPhase::Timeout => ("✗ Timeout".to_string(), Style::default().fg(palette::MINIMAX_RED)),
+            DuoPhase::Approved => (
+                "✓ Approved".to_string(),
+                Style::default().fg(palette::MINIMAX_GREEN),
+            ),
+            DuoPhase::Timeout => (
+                "✗ Timeout".to_string(),
+                Style::default().fg(palette::MINIMAX_RED),
+            ),
         }
     }
 
@@ -202,12 +211,19 @@ impl DuoSessionPicker {
         if summary.len() <= MAX_SUMMARY_LENGTH {
             return summary.to_string();
         }
-        let mut truncated = summary.chars().take(MAX_SUMMARY_LENGTH - 3).collect::<String>();
+        let mut truncated = summary
+            .chars()
+            .take(MAX_SUMMARY_LENGTH - 3)
+            .collect::<String>();
         truncated.push_str("...");
         truncated
     }
 
-    fn render_session_item<'a>(&self, session_match: &'a DuoSessionMatch, index: usize) -> ListItem<'a> {
+    fn render_session_item<'a>(
+        &self,
+        session_match: &'a DuoSessionMatch,
+        index: usize,
+    ) -> ListItem<'a> {
         let state = &session_match.state;
         let is_selected = index == self.selected;
         let is_current = self.is_current_session(&session_match.id);
@@ -292,7 +308,9 @@ impl DuoSessionPicker {
                 if idx < chars.len() {
                     title_line.push_span(Span::styled(
                         chars[idx].to_string(),
-                        base_style.add_modifier(Modifier::BOLD).fg(palette::MINIMAX_YELLOW),
+                        base_style
+                            .add_modifier(Modifier::BOLD)
+                            .fg(palette::MINIMAX_YELLOW),
                     ));
                     last_idx = idx + 1;
                 }
@@ -488,7 +506,9 @@ fn fuzzy_match(haystack: &str, needle: &str) -> Option<(i64, Vec<usize>)> {
 
             let mut char_score: i64 = 1;
 
-            if let Some(prev) = prev_match_idx && hay_idx == prev + 1 {
+            if let Some(prev) = prev_match_idx
+                && hay_idx == prev + 1
+            {
                 char_score += 5;
             }
 

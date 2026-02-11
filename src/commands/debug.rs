@@ -101,7 +101,7 @@ pub fn context(app: &mut App) -> CommandResult {
     // Rough token estimate (4 chars per token on average)
     let estimated_tokens = total_chars / 4;
 
-    let context_size = context_window_for_model(&app.model).unwrap_or(128_000);
+    let context_size = context_window_for_model(&app.model, None).unwrap_or(128_000);
     let estimated_tokens_u32 = u32::try_from(estimated_tokens).unwrap_or(u32::MAX);
     let usage_pct = (f64::from(estimated_tokens_u32) / f64::from(context_size) * 100.0).min(100.0);
 
@@ -204,9 +204,9 @@ pub fn debug_info(app: &mut App) -> CommandResult {
     output.push_str(&format!("  Model:          {}\n\n", app.model));
 
     // Context
-    let context_size = context_window_for_model(&app.model).unwrap_or(128_000);
     let total_chars = estimate_message_chars(&app.api_messages);
     let estimated_tokens = total_chars / 4;
+    let context_size = context_window_for_model(&app.model, None).unwrap_or(128_000);
     let usage_pct = (estimated_tokens as f64 / context_size as f64 * 100.0).min(100.0);
 
     output.push_str("Context:\n");

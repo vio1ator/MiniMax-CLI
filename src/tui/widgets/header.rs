@@ -25,6 +25,7 @@ pub struct HeaderData<'a> {
     pub background: ratatui::style::Color,
     pub shell_mode: bool,
     pub pins: Vec<&'a PinnedMessage>,
+    pub custom_context_windows: std::collections::HashMap<String, u32>,
 }
 
 impl<'a> HeaderData<'a> {
@@ -36,8 +37,9 @@ impl<'a> HeaderData<'a> {
         context_used: u32,
         is_streaming: bool,
         background: ratatui::style::Color,
+        custom_context_windows: std::collections::HashMap<String, u32>,
     ) -> Self {
-        let context_max = context_window_for_model(model);
+        let context_max = context_window_for_model(model, Some(&custom_context_windows));
         Self {
             mode,
             model,
@@ -47,6 +49,7 @@ impl<'a> HeaderData<'a> {
             background,
             shell_mode: false,
             pins: Vec::new(),
+            custom_context_windows,
         }
     }
 
@@ -321,6 +324,7 @@ mod tests {
 
     #[test]
     fn test_context_percent_calculation() {
+        let mut custom_windows = std::collections::HashMap::new();
         let data = HeaderData {
             mode: AppMode::Normal,
             model: "minimax-m2.1",
@@ -330,6 +334,7 @@ mod tests {
             background: palette::MINIMAX_INK,
             shell_mode: false,
             pins: Vec::new(),
+            custom_context_windows: custom_windows,
         };
         assert_eq!(data.context_percent(), 50);
         assert_eq!(data.context_remaining_percent(), 50);
@@ -337,6 +342,7 @@ mod tests {
 
     #[test]
     fn test_context_percent_zero() {
+        let mut custom_windows = std::collections::HashMap::new();
         let data = HeaderData {
             mode: AppMode::Normal,
             model: "minimax-m2.1",
@@ -346,6 +352,7 @@ mod tests {
             background: palette::MINIMAX_INK,
             shell_mode: false,
             pins: Vec::new(),
+            custom_context_windows: custom_windows,
         };
         assert_eq!(data.context_percent(), 0);
         assert_eq!(data.context_remaining_percent(), 100);
@@ -353,6 +360,7 @@ mod tests {
 
     #[test]
     fn test_context_percent_no_max() {
+        let mut custom_windows = std::collections::HashMap::new();
         let data = HeaderData {
             mode: AppMode::Normal,
             model: "unknown-model",
@@ -362,6 +370,7 @@ mod tests {
             background: palette::MINIMAX_INK,
             shell_mode: false,
             pins: Vec::new(),
+            custom_context_windows: custom_windows,
         };
         assert_eq!(data.context_percent(), 0);
         assert_eq!(data.context_remaining_percent(), 100);

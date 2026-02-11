@@ -1094,15 +1094,15 @@ fn print_rlm_info() {
     println!();
 }
 
- /// Run Duo commands
- async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
-     use colored::Colorize;
+/// Run Duo commands
+async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
+    use colored::Colorize;
 
-     let _config = load_config_from_cli(cli)?;
-     let _workspace = cli
-         .workspace
-         .clone()
-         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let _config = load_config_from_cli(cli)?;
+    let _workspace = cli
+        .workspace
+        .clone()
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     match command.command {
         DuoSubcommand::Start {
