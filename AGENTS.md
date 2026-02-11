@@ -12,7 +12,7 @@ This file provides context for AI assistants working on this project.
 - Format: `cargo fmt`
 - Lint: `cargo clippy`
 
-### Project: minimax-cli
+### Project: axiom-cli
 
 ### Documentation
 See README.md for project overview.

@@ -145,14 +145,14 @@ cargo run -- config show
 
 ## If You Get Stuck
 1. Run `cargo check` to identify specific errors
-2. Use `cargo expand --lib minimax` to debug macro expansion
+2. Use `cargo expand --lib axiom` to debug macro expansion
 3. Check git status: `git diff src/tui/app.rs` to see recent changes
 4. Reference: The helper methods need to be `impl App` methods, not standalone functions
 
 ## Important Design Notes
-- MiniMax color palette: Use MINIMAX_BLUE_RGB for branding
+- Axiom color palette: Use BLUE_RGB for branding
 - Status footer: Show ⚡ for process, 📋 for todos, 📁 for files
 - Keep TUI clean: Command area top, response middle, status bottom
-- Use MiniMax's iconography: ✨ 🔷 📚 🎯 ⚡ 📋 📁
+- Use Axiom's iconography: ✨ 🔷 📚 🎯 ⚡ 📋 📁
 
 Good luck! 🚀

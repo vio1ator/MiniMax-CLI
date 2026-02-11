@@ -151,7 +151,7 @@ This document summarizes the improvements made to bring MiniMax CLI to the level
 ## Phase 15: Input History Persistence ✅
 
 ### Persistent Command History
-- Saves to `~/.config/minimax/input_history.txt`
+- Saves to `~/.config/axiom/input_history.txt`
 - Loads on startup
 - Filters out slash commands and duplicates
 - Configurable max history size
@@ -177,10 +177,7 @@ This document summarizes the improvements made to bring MiniMax CLI to the level
 
 ### Enhanced `/model` Command
 - Interactive picker when called without arguments
-- Shows available MiniMax models with descriptions:
-  - MiniMax-M2.1 (general purpose)
-  - MiniMax-Text-01 (long context)
-  - MiniMax-Coding-01 (code generation)
+- Shows available models with descriptions:
 - Validates model names when called with arguments
 - Persists selection to settings
 
@@ -201,8 +198,8 @@ Finished `release` profile [optimized]
 ## Usage Examples
 
 ```bash
-# Start MiniMax CLI
-minimax
+# Start Axiom CLI
+axiom
 
 # Toggle shell mode (Ctrl-X)
 # Then type shell commands directly
@@ -225,7 +222,7 @@ $ npm test
 
 ## Key Improvements Summary
 
-| Feature | kimi-cli | codex | claude code | minimax-cli (now) |
+| Feature | kimi-cli | codex | claude code | axiom-cli (now) |
 |---------|----------|-------|-------------|-------------------|
 | Shell Mode (Ctrl-X) | ✅ | ❌ | ❌ | ✅ |
 | /debug command | ✅ | ❌ | ❌ | ✅ |

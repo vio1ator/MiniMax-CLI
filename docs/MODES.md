@@ -1,17 +1,17 @@
 # Modes and Approvals
 
-MiniMax CLI has two related concepts:
+Axiom CLI has two related concepts:
 
-- **TUI mode**: what kind of interaction you’re in (Normal/Plan/Agent/YOLO/RLM).
+- **TUI mode**: what kind of interaction you're in (Normal/Plan/Agent/YOLO/RLM).
 - **Approval mode**: how aggressively the UI asks before executing tools.
 
 ## TUI Modes
 
 Press `Tab` to cycle: **Normal → Plan → Agent → YOLO → RLM → Duo → Normal**.
 
-- **Normal**: chat-first. Approvals for file writes, shell, and paid tools.
+- **Normal**: chat-first. Approvals for file writes and shell.
 - **Plan**: design-first prompting. Approvals match Normal.
-- **Agent**: multi-step tool use. Approvals for shell and paid tools (file writes are allowed without a prompt).
+- **Agent**: multi-step tool use. Approvals for shell (file writes are allowed without a prompt).
 - **YOLO**: enables shell + trust mode and auto-approves all tools. Use only in trusted repos.
 - **RLM**: externalized context store + REPL helpers. Tools are auto-approved (best for large files and long-context work).
 - **Duo**: player-coach autocoding with iterative validation. Tools are auto-approved during the player-coach loop. Dedicated TUI view with phase visualization, quality scores, and session browser. See `DUO.md` for details.
@@ -28,7 +28,7 @@ You can override approval behavior at runtime:
 
 - `suggest` (default): uses the per-mode rules above.
 - `auto`: auto-approves all tools (similar to YOLO/RLM approval behavior, but without forcing YOLO mode).
-- `never`: blocks any tool that isn’t considered safe/read-only.
+- `never`: blocks any tool that isn't considered safe/read-only.
 
 ## Workspace Boundary and Trust Mode
 
@@ -48,7 +48,7 @@ See `MCP.md`.
 
 ## Related CLI Flags
 
-Run `minimax --help` for the canonical list. Common flags:
+Run `axiom --help` for the canonical list. Common flags:
 
 - `-p, --prompt <TEXT>`: one-shot prompt mode (prints and exits)
 - `--workspace <DIR>`: workspace root for file tools

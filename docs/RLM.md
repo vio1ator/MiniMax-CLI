@@ -1,8 +1,8 @@
 # RLM Mode
 
-RLM mode (“Recursive Language Model” mode) is MiniMax CLI’s long-context workflow: it stores large context externally and provides REPL-like tools to explore and query it without stuffing everything into the model’s context window.
+RLM mode ("Recursive Language Model" mode) is Axiom CLI's long-context workflow: it stores large context externally and provides REPL-like tools to explore and query it without stuffing everything into the model's context window.
 
-If you’re curious about the research inspiration and implementation notes, see:
+If you're curious about the research inspiration and implementation notes, see:
 
 - `docs/rlm-paper.txt`
 - `docs/rlm_gap_analysis.md`

@@ -6,7 +6,7 @@ allowed-tools: upload_file, tts_async_create, tts_async_query, voice_list, retri
 You are running the Audiobook Workshop skill.
 
 Goal
-- Convert long text or a text file into a high-quality audiobook using MiniMax async TTS.
+- Convert long text or a text file into an audiobook using async TTS.
 
 Ask for
 - Source: raw text or a file path (preferred for long chapters).

@@ -4,14 +4,14 @@
 //! types / followed by a command pattern.
 
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem},
-    Frame,
 };
 
-use crate::commands::{commands_matching, CommandInfo, COMMANDS};
+use crate::commands::{COMMANDS, CommandInfo, commands_matching};
 use crate::palette;
 use crate::tui::app::AppMode;
 
@@ -487,7 +487,7 @@ pub fn get_command_hint(input: &str) -> Option<&'static str> {
         let after_model = trimmed.strip_prefix("/model ").unwrap_or("").trim();
         if after_model.is_empty() {
             return Some(
-                 "Available: model-01, text-01, coding-01, gemini-2.5-flash, claude-sonnet-4-20250514",
+                "Available: model-01, text-01, coding-01, gemini-2.5-flash, claude-sonnet-4-20250514",
             );
         }
     }
@@ -601,10 +601,12 @@ mod tests {
 
         if let Some(cmd) = completer.selected_command() {
             assert_eq!(cmd.name, "help");
-            assert!(completer
-                .selection_for_insert()
-                .unwrap()
-                .starts_with("/help"));
+            assert!(
+                completer
+                    .selection_for_insert()
+                    .unwrap()
+                    .starts_with("/help")
+            );
         }
     }
 

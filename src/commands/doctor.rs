@@ -11,7 +11,7 @@
 //! - Network connectivity (basic check)
 
 use super::CommandResult;
-use crate::config::{has_api_key, Config};
+use crate::config::{Config, has_api_key};
 use crate::mcp::McpPool;
 use crate::palette;
 use crate::settings::Settings;

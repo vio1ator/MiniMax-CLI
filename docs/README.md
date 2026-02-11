@@ -1,6 +1,6 @@
 # Documentation
 
-This directory is the long-form documentation for MiniMax CLI.
+This directory is the long-form documentation for Axiom CLI.
 
 ## For Users
 

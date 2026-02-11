@@ -1,7 +1,7 @@
 //! Debug commands: tokens, cost, system, context, undo, retry, debug
 
 use super::CommandResult;
-use crate::models::{context_window_for_model, SystemPrompt};
+use crate::models::{SystemPrompt, context_window_for_model};
 use crate::pricing;
 use crate::tui::app::{App, AppAction, AppMode};
 use crate::tui::history::HistoryCell;

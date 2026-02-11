@@ -1,6 +1,6 @@
 # MCP (External Tool Servers)
 
-MiniMax CLI can load additional tools via MCP (Model Context Protocol). MCP servers are local processes that the CLI starts and communicates with over stdio.
+Axiom CLI can load additional tools via MCP (Model Context Protocol). MCP servers are local processes that the CLI starts and communicates with over stdio.
 
 ## Config File Location
 
@@ -11,7 +11,7 @@ Default path:
 Overrides:
 
 - Config: `mcp_config_path = "/path/to/mcp.json"`
-- Env: `MINIMAX_MCP_CONFIG=/path/to/mcp.json`
+- Env: `AXIOM_MCP_CONFIG=/path/to/mcp.json`
 
 After editing the file, restart the TUI.
 
@@ -61,7 +61,7 @@ MCP tools currently execute without TUI approval prompts. Only configure MCP ser
 
 ## Troubleshooting
 
-- Run `minimax doctor` to confirm whether the default `~/.axiom/mcp.json` exists.
-- If you override `mcp_config_path` / `MINIMAX_MCP_CONFIG`, note that `minimax doctor` still checks `~/.axiom/mcp.json`.
+- Run `axiom doctor` to confirm whether the default `~/.axiom/mcp.json` exists.
+- If you override `mcp_config_path` / `AXIOM_MCP_CONFIG`, note that `axiom doctor` still checks `~/.axiom/mcp.json`.
 - If tools don’t appear, verify the server command works from your shell and that the server supports MCP `tools/list`.
 

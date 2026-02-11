@@ -1,6 +1,6 @@
 # Voice and Tone
 
-MiniMax CLI should feel like a capable, collaborative teammate. Keep the experience precise, calm, and lightly playful when it fits.
+Axiom CLI should feel like a capable, collaborative teammate. Keep the experience precise, calm, and lightly playful when it fits.
 
 ## Principles
 

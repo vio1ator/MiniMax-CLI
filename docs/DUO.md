@@ -24,10 +24,10 @@ Workflow: `init → player → coach → advance → (repeat until approved)`
 ## CLI Commands
 
 ```bash
-minimax duo start --requirements docs/requirements.md   # Start a new workflow
-minimax duo start --requirements spec.md --workspace .   # Start in current directory
-minimax duo continue <session-id>                        # Resume a saved session
-minimax duo sessions                                     # List all saved sessions
+axiom duo start --requirements docs/requirements.md   # Start a new workflow
+axiom duo start --requirements spec.md --workspace .   # Start in current directory
+axiom duo continue <session-id>                        # Resume a saved session
+axiom duo sessions                                     # List all saved sessions
 ```
 
 ## Session Persistence
@@ -78,7 +78,7 @@ Duo mode uses `DuoConfig` from the main configuration system. Relevant settings:
 
 - Maximum turns per session
 - Quality score thresholds
-- Model selection (defaults to `MiniMax-M2.1-Coding`)
+- Model selection (defaults to first configured model)
 
 ## Related
 

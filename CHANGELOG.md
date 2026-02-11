@@ -7,13 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated to Axiom CLI naming and branding
+
 ## [0.6.0] - 2026-01-29
 
 ### Added
-- `review` CLI subcommand — run code reviews from the command line (`minimax review --staged`, `minimax review --base origin/main`)
-- `exec` CLI subcommand — headless agentic execution (`minimax exec "prompt" --auto`)
-- `setup` CLI subcommand — bootstrap MCP config and skills directories (`minimax setup --mcp --skills --all`)
-- `mcp` CLI subcommands — manage MCP servers (`minimax mcp init/list/connect/tools`)
+- `review` CLI subcommand — run code reviews from the command line (`axiom review --staged`, `axiom review --base origin/main`)
+- `exec` CLI subcommand — headless agentic execution (`axiom exec "prompt" --auto`)
+- `setup` CLI subcommand — bootstrap MCP config and skills directories (`axiom setup --mcp --skills --all`)
+- `mcp` CLI subcommands — manage MCP servers (`axiom mcp init/list/connect/tools`)
 - `think` tool — transparent reasoning pass-through for agent modes
 - `/copy` slash command — copy last assistant message (or Nth message) to clipboard
 - Updated modes display with new CLI commands
@@ -35,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated duplicate auto-compaction paths that ran with conflicting settings
 - ESC key now clears queued draft when cancelling a loading request
 - /retry command now queues messages when engine is busy instead of bypassing queue
-- Context % meter now recalculates after user messages, estimates tool tokens, and supports MiniMax-Text-01/Coding-01 models
+- Context % meter now recalculates after user messages, estimates tool tokens
 
 ## [0.4.0] - 2026-01-27
 
@@ -68,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status footer with process, todo, and recent file indicators
 
 ### Changed
-- CLI mode/branding descriptions for MiniMax + Coding API modes
+- CLI mode/branding descriptions
 - Footer density improvements: context-aware scroll hints, brief token usage, and condensed recent files
 
 ## [0.2.2] - 2026-01-20
@@ -80,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Responses API proxy for controlled upstream access
 
 ### Changed
-- New MiniMax palette and header bar for consistent UI styling
+- New palette and header bar for consistent UI styling
 - Shared todo/plan state across agent runs
 
 ### Fixed
@@ -110,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.9] - 2026-01-17
 
 ### Added
-- API connectivity test in `minimax doctor` command
+- API connectivity test in `axiom doctor` command
 - Helpful error diagnostics for common API failures (invalid key, timeout, network issues)
 
 ## [0.1.8] - 2026-01-16

@@ -53,7 +53,7 @@ Response style
 - Provide timing estimates based on word count.
 
 Notes
-- Voice design is unique to MiniMax—emphasize this capability.
+- Voice design offers advanced customization—emphasize this capability.
 - Always get approval on preview before full production.
 - For long-form content, suggest checking pacing mid-way.
 - Offer to generate "sting" or "logo" audio (short signature phrase).

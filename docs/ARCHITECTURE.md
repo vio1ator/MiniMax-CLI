@@ -1,6 +1,6 @@
-# MiniMax CLI Architecture
+# Axiom CLI Architecture
 
-This document provides an overview of the MiniMax CLI architecture for developers and contributors.
+This document provides an overview of the Axiom CLI architecture for developers and contributors.
 
 ## High-Level Overview
 
@@ -37,9 +37,9 @@ This document provides an overview of the MiniMax CLI architecture for developer
 ┌─────────────────────────────────────────────────────────────────┐
 │                        LLM Layer                                │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │              LLM Client Abstraction (llm_client.rs)       │  │
+│  │           LLM Client Abstraction (llm_client.rs)          │  │
 │  │  ┌─────────────────┐  ┌─────────────────────────────┐    │  │
-│  │  │  MiniMax Client │  │  Compatible Client (MiniMax)│    │  │
+│  │  │ Generic Client  │  │  Compatible Client          │    │  │
 │  │  │   (client.rs)   │  │       (client.rs)           │    │  │
 │  │  └─────────────────┘  └─────────────────────────────┘    │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -68,18 +68,17 @@ This document provides an overview of the MiniMax CLI architecture for developer
 
 ### LLM Integration
 
-- **`client.rs`** - HTTP client for MiniMax APIs, including the Anthropic-compatible format
+- **`client.rs`** - HTTP client for LLM APIs, including the Anthropic-compatible format
 - **`llm_client.rs`** - Abstract LLM client trait with retry logic
 - **`models.rs`** - Data structures for API requests/responses
 
-#### MiniMax API Endpoints
+#### LLM API Endpoints
 
-MiniMax provides two API formats:
-- `https://api.minimax.io/anthropic` - Anthropic-compatible (recommended by MiniMax, used by engine)
-- `https://api.minimax.io/v1` - OpenAI-compatible (not used by the engine)
+The CLI uses generic LLM provider APIs:
+- Generic provider APIs via configurable base URL
+- Anthropic-compatible endpoints (common format)
 
-The engine uses `handle_anthropic_turn()` for chat models to stay on the
-Anthropic-compatible request/response format provided by MiniMax.
+The engine uses standard API formats for chat models.
 
 ### Tool System
 

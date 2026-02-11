@@ -37,15 +37,15 @@ impl TutorialStep {
 
 /// All tutorial steps in order.
 pub const TUTORIAL_STEPS: &[TutorialStep] = &[
-     TutorialStep::new(
-         "Welcome",
-         "Welcome to Axiom CLI! Let's get you started with the basics.",
-     ),
-     TutorialStep::with_hint(
-         "Modes",
-         "Axiom has multiple modes for different workflows.",
-         "Press Tab to cycle: Normal → Plan → Agent → YOLO → RLM → Duo",
-     ),
+    TutorialStep::new(
+        "Welcome",
+        "Welcome to Axiom CLI! Let's get you started with the basics.",
+    ),
+    TutorialStep::with_hint(
+        "Modes",
+        "Axiom has multiple modes for different workflows.",
+        "Press Tab to cycle: Normal → Plan → Agent → YOLO → RLM → Duo",
+    ),
     TutorialStep::with_hint(
         "File References",
         "Quickly reference files in your workspace.",

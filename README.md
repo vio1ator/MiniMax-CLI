@@ -3,7 +3,7 @@
 [![CI](https://github.com/Hmbown/Axiom-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/Axiom-CLI/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/axiom-cli)](https://crates.io/crates/axiom-cli)
 
-Unofficial terminal UI (TUI) + CLI for the [Axiom platform](https://platform.axiom.io): chat with **Axiom-model-01**, run an approval-gated tool-using agent, and generate media (images, video, music, TTS).
+Unofficial terminal UI (TUI) + CLI for the Axiom platform: chat with Axiom-model-01, run an approval-gated tool-using agent.
 
 Not affiliated with Axiom Inc.
 
@@ -86,12 +86,11 @@ Approval behavior is mode-dependent, but you can also override it at runtime wit
 
 ## Tools
 
-Axiom CLI exposes tools to the model: file read/write/patching, shell execution, web search, sub-agents, and Axiom media APIs.
+Axiom CLI exposes tools to the model: file read/write/patching, shell execution, web search, sub-agents, and external APIs.
 
 - **Workspace boundary**: file tools are restricted to `--workspace` unless you enable `/trust` (YOLO enables trust automatically).
-- **Approvals**: the TUI requests approval depending on mode and tool category (file writes, shell, paid media).
+- **Approvals**: the TUI requests approval depending on mode and tool category (file writes, shell).
 - **Web search**: `web_search` uses DuckDuckGo HTML results and is auto-approved.
-- **Media tools**: image/video/music/TTS tools make paid API calls and write real files.
 - **Skills**: reusable workflows stored as `SKILL.md` directories (default: `~/.axiom/skills`). Use `/skills` and `/skill <name>` (this repo includes examples under `skills/`).
 - **MCP**: load external tool servers via `~/.axiom/mcp.json` (supports `servers` and `mcpServers`). MCP tools currently execute without TUI approval prompts, so only enable servers you trust. See `docs/MCP.md`.
 
@@ -156,11 +155,7 @@ axiom completions bash > axiom.bash
 axiom completions fish > axiom.fish
 ```
 
-Run the paid media smoke test (writes real files and spends credits):
 
-```bash
-axiom --workspace . smoke-media --confirm
-```
 
 ## Troubleshooting
 
