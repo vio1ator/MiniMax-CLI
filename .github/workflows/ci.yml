@@ -71,15 +71,39 @@ jobs:
 
   # Check documentation builds without warnings
   docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ inputs.toolchain || 'stable' }}
-      - uses: Swatinem/rust-cache@v2
-      - name: Build docs
-        run: cargo doc --no-deps
-        env:
-          RUSTDOCFLAGS: -Dwarnings
+     name: Documentation
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
+       - uses: dtolnay/rust-toolchain@stable
+         with:
+           toolchain: ${{ inputs.toolchain || 'stable' }}
+       - uses: Swatinem/rust-cache@v2
+       - name: Build docs
+         run: cargo doc --no-deps
+         env:
+           RUSTDOCFLAGS: -Dwarnings
+
+  test-coverage:
+     name: Test Coverage
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v4
+       - uses: dtolnay/rust-toolchain@stable
+         with:
+           toolchain: ${{ inputs.toolchain || 'stable' }}
+           components: llvm-tools-preview
+       - uses: Swatinem/rust-cache@v2
+       - name: Install cargo-llvm-cov
+         run: |
+           curl -L --output cargo-llvm-cov.tar.gz https://github.com/taiki-e/cargo-llvm-cov/releases/latest/download/cargo-llvm-cov-x86_64-unknown-linux-musl.tar.gz
+           tar xzf cargo-llvm-cov.tar.gz
+           mv cargo-llvm-cov ~/.cargo/bin/
+       - name: Generate coverage
+         run: cargo llvm-cov --all-features --html --output-dir target/coverage
+       - name: Upload coverage
+         uses: actions/upload-artifact@v4
+         with:
+           name: coverage-report
+           path: target/coverage
+           retention-days: 30

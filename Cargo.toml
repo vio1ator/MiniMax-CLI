@@ -53,6 +53,7 @@ wait-timeout = "0.2"
 zeroize = "1.8.2"
 
 [dev-dependencies]
+anyhow = "1.0.100"
 pretty_assertions = "1.4"
 wiremock = "0.6"
 
