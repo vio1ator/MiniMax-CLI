@@ -38,7 +38,7 @@ impl ToolSpec for CodingCompleteTool {
     }
 
     fn description(&self) -> &'static str {
-        "Generate code using MiniMax Coding API. Optimized for code generation with better context handling."
+         "Generate code using Axiom Coding API. Optimized for code generation with better context handling."
     }
 
     fn input_schema(&self) -> Value {
@@ -161,7 +161,7 @@ impl ToolSpec for CodingReviewTool {
     }
 
     fn description(&self) -> &'static str {
-        "Review code using MiniMax Coding API. Identifies bugs, style issues, and improvements."
+         "Review code using Axiom Coding API. Identifies bugs, style issues, and improvements."
     }
 
     fn input_schema(&self) -> Value {

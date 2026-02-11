@@ -1,4 +1,4 @@
-//! Application state for the `MiniMax` TUI.
+//! Application state for the TUI.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -9,15 +9,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::config::{Config, has_api_key, save_api_key};
-use crate::duo::{SharedDuoSession, new_shared_duo_session};
+use crate::config::{has_api_key, save_api_key, Config};
+use crate::duo::{new_shared_duo_session, SharedDuoSession};
 use crate::hooks::{HookContext, HookEvent, HookExecutor, HookResult};
 use crate::models::{Message, SystemPrompt};
 use crate::palette::{self, UiTheme};
 use crate::rlm::{RlmSession, SharedRlmSession};
 use crate::settings::Settings;
-use crate::tools::plan::{SharedPlanState, new_shared_plan_state};
-use crate::tools::todo::{SharedTodoList, new_shared_todo_list};
+use crate::tools::plan::{new_shared_plan_state, SharedPlanState};
+use crate::tools::todo::{new_shared_todo_list, SharedTodoList};
 use crate::tui::approval::ApprovalMode;
 use crate::tui::clipboard::{ClipboardContent, ClipboardHandler};
 use crate::tui::fuzzy_picker::FuzzyPicker;
@@ -468,7 +468,7 @@ impl App {
             };
             vec![HistoryCell::System {
                 content: format!(
-                    "Welcome to MiniMax! Model: {} | Workspace: {}{}",
+                    "Welcome to Axiom! Model: {} | Workspace: {}{}",
                     model,
                     workspace.display(),
                     mode_msg
@@ -606,7 +606,7 @@ impl App {
                 // Add welcome message after successful setup
                 self.add_message(HistoryCell::System {
                     content: format!(
-                        "Welcome to MiniMax CLI! Model: {} | Workspace: {}",
+                        "Welcome to Axiom CLI! Model: {} | Workspace: {}",
                         self.model,
                         self.workspace.display()
                     ),
@@ -715,21 +715,37 @@ impl App {
             AppMode::Agent => {
                 // file(4) + search(1) + todo(1) + plan(1) + note(1) + web(1) + patch(1) + subagent(1) = 11
                 let base = 11;
-                if self.allow_shell { base + 3 } else { base }
+                if self.allow_shell {
+                    base + 3
+                } else {
+                    base
+                }
             }
             AppMode::Yolo => {
                 let base = 11;
-                if self.allow_shell { base + 3 } else { base }
+                if self.allow_shell {
+                    base + 3
+                } else {
+                    base
+                }
             }
             AppMode::Rlm => {
                 // base(11) + 4 RLM tools + subagent(1) = 16
                 let base = 16;
-                if self.allow_shell { base + 3 } else { base }
+                if self.allow_shell {
+                    base + 3
+                } else {
+                    base
+                }
             }
             AppMode::Duo => {
                 // base(11) + 2 duo tools + subagent(1) = 14
                 let base = 14;
-                if self.allow_shell { base + 3 } else { base }
+                if self.allow_shell {
+                    base + 3
+                } else {
+                    base
+                }
             }
         };
 
@@ -1319,11 +1335,10 @@ mod tests {
         let mut app = App::new(test_options(false), &Config::default());
         app.toggle_shell_mode();
         assert!(app.shell_mode);
-        assert!(
-            app.status_message
-                .as_deref()
-                .is_some_and(|s| s.contains("Shell mode enabled"))
-        );
+        assert!(app
+            .status_message
+            .as_deref()
+            .is_some_and(|s| s.contains("Shell mode enabled")));
         app.toggle_shell_mode();
         assert!(!app.shell_mode);
     }

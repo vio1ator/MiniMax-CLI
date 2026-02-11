@@ -1,4 +1,4 @@
-//! Terminal UI (TUI) module for `MiniMax` CLI.
+//! Terminal UI (TUI) module for Axiom CLI.
 
 // === Submodules ===
 

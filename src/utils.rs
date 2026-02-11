@@ -1,4 +1,4 @@
-//! Utility helpers shared across the `MiniMax` CLI.
+//! Utility helpers shared across the Axiom CLI.
 
 use std::fs;
 use std::path::{Path, PathBuf};

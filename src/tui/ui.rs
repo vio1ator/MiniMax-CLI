@@ -1,4 +1,4 @@
-//! TUI event loop and rendering logic for `MiniMax` CLI.
+//! TUI event loop and rendering logic.
 
 use std::fmt::Write;
 use std::fs;
@@ -3231,24 +3231,24 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
 
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("Welcome to ", Style::default().fg(palette::TEXT_PRIMARY)),
-                Span::styled("MiniMax CLI", Style::default().fg(palette::BLUE).bold()),
-            ]));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Unofficial CLI for MiniMax M2.1 API",
-                Style::default().fg(palette::TEXT_MUTED).italic(),
-            )));
-            lines.push(Line::from(Span::styled(
-                "Not affiliated with MiniMax Inc.",
-                Style::default().fg(palette::TEXT_MUTED).italic(),
-            )));
-            lines.push(Line::from(""));
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "To get started, you'll need a MiniMax API key.",
-                Style::default().fg(palette::TEXT_PRIMARY),
-            )));
+                 Span::styled("Welcome to ", Style::default().fg(palette::TEXT_PRIMARY)),
+                 Span::styled("Axiom CLI", Style::default().fg(palette::BLUE).bold()),
+             ]));
+             lines.push(Line::from(""));
+             lines.push(Line::from(Span::styled(
+                 "Unofficial CLI for Axiom API",
+                 Style::default().fg(palette::TEXT_MUTED).italic(),
+             )));
+             lines.push(Line::from(Span::styled(
+                 "Not affiliated with Axiom Inc.",
+                 Style::default().fg(palette::TEXT_MUTED).italic(),
+             )));
+             lines.push(Line::from(""));
+             lines.push(Line::from(""));
+             lines.push(Line::from(Span::styled(
+                 "To get started, you'll need an API key.",
+                 Style::default().fg(palette::TEXT_PRIMARY),
+             )));
             lines.push(Line::from(Span::styled(
                 "Get yours at: your provider's platform",
                 Style::default().fg(palette::ORANGE),
@@ -3286,7 +3286,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "Paste your MiniMax API key below:",
+                     "Paste your API key below:",
                     Style::default().fg(palette::TEXT_PRIMARY),
                 )),
                 Line::from(""),
@@ -3358,7 +3358,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                 Line::from(""),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "You're all set! Start chatting with MiniMax M2.1",
+                     "You're all set! Start chatting with Axiom",
                     Style::default().fg(palette::TEXT_PRIMARY),
                 )),
                 Line::from(""),

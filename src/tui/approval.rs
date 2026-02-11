@@ -1,4 +1,4 @@
-//! Tool approval system for `MiniMax` CLI
+//! Tool approval system for Axiom CLI
 //!
 //! Provides types and overlay widget for requesting user approval before
 //! executing tools that may have costs or side effects.

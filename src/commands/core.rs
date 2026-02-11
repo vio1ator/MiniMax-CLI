@@ -102,7 +102,7 @@ pub fn subagents(_app: &mut App) -> CommandResult {
     CommandResult::with_message_and_action("Fetching sub-agent status...", AppAction::ListSubAgents)
 }
 
-/// Show `MiniMax` dashboard and docs links
+/// Show dashboard and docs links
 pub fn axiom_links() -> CommandResult {
     CommandResult::message(
         "Axiom Links:\n\

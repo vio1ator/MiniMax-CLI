@@ -192,7 +192,7 @@ impl<'a> HeaderWidget<'a> {
             };
             let source_label = match pin.source {
                 crate::tui::app::PinSource::User => "You",
-                crate::tui::app::PinSource::Assistant => "MiniMax",
+                crate::tui::app::PinSource::Assistant => "Assistant",
             };
             let preview = pin.preview();
 
@@ -311,7 +311,11 @@ impl Renderable for HeaderWidget<'_> {
     }
 
     fn desired_height(&self, _width: u16) -> u16 {
-        if self.data.pins.is_empty() { 1 } else { 2 }
+        if self.data.pins.is_empty() {
+            1
+        } else {
+            2
+        }
     }
 }
 

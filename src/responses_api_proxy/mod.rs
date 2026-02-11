@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
-use reqwest::Url;
 use reqwest::blocking::Client;
-use reqwest::header::{AUTHORIZATION, HOST, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, HOST};
+use reqwest::Url;
 use serde::Serialize;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
@@ -18,10 +18,7 @@ use read_api_key::read_auth_header_from_stdin;
 
 /// CLI arguments for the proxy.
 #[derive(Debug, Clone, Parser)]
-#[command(
-    name = "responses-api-proxy",
-    about = "Minimal MiniMax responses proxy"
-)]
+#[command(name = "responses-api-proxy", about = "Minimal Axiom responses proxy")]
 pub struct Args {
     /// Port to listen on. If not set, an ephemeral port is used.
     #[arg(long)]

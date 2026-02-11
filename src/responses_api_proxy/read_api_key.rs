@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use zeroize::Zeroize;
 
 /// Use a generous buffer size to avoid truncation and to allow for longer API
@@ -161,10 +161,10 @@ where
 
 #[cfg(unix)]
 fn mlock_str(value: &str) {
-    use libc::_SC_PAGESIZE;
     use libc::c_void;
     use libc::mlock;
     use libc::sysconf;
+    use libc::_SC_PAGESIZE;
 
     if value.is_empty() {
         return;

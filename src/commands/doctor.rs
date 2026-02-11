@@ -11,7 +11,7 @@
 //! - Network connectivity (basic check)
 
 use super::CommandResult;
-use crate::config::{Config, has_api_key};
+use crate::config::{has_api_key, Config};
 use crate::mcp::McpPool;
 use crate::palette;
 use crate::settings::Settings;
@@ -460,7 +460,7 @@ fn check_network() -> Vec<CheckResult> {
 
     if !any_resolved {
         results.push(CheckResult::warning_with_hint(
-            "Could not resolve MiniMax API hostnames",
+            "Could not resolve API hostnames",
             "Check your network connection and DNS settings",
         ));
     }
@@ -490,7 +490,7 @@ fn format_diagnostic_output(groups: &[(&'static str, Vec<CheckResult>)]) -> Stri
     let _ = writeln!(
         output,
         "{}",
-        "║                    MiniMax CLI Doctor                         ║"
+        "║                    Axiom CLI Doctor                           ║"
             .truecolor(blue_r, blue_g, blue_b)
     );
     let _ = writeln!(

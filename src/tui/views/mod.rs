@@ -233,7 +233,7 @@ impl ModalView for HelpView {
 
         let mut help_lines: Vec<Line> = vec![
             Line::from(vec![Span::styled(
-                "MiniMax CLI Help",
+                "Axiom CLI Help",
                 Style::default().fg(palette::BLUE).bold(),
             )]),
             Line::from(""),

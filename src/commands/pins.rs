@@ -58,7 +58,7 @@ pub fn list_pins(app: &App) -> CommandResult {
     for (idx, pin) in pins.iter().enumerate() {
         let source_label = match pin.source {
             PinSource::User => "You",
-            PinSource::Assistant => "MiniMax",
+            PinSource::Assistant => "Assistant",
         };
         let preview = pin.preview();
         output.push_str(&format!("{}. [{}] {}\n", idx + 1, source_label, preview));

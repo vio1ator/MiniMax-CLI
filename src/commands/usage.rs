@@ -6,7 +6,7 @@ use super::CommandResult;
 
 /// Show API usage and quota information
 ///
-/// Note: MiniMax doesn't currently provide a quota API endpoint,
+/// Note: API doesn't currently provide a quota API endpoint,
 /// so this shows estimated usage based on session tracking.
 pub fn usage(app: &mut App) -> CommandResult {
     let mut output = String::new();
@@ -25,8 +25,8 @@ pub fn usage(app: &mut App) -> CommandResult {
     output.push_str(&format!("  Model:           {}\n\n", app.model));
 
     // Media generation costs
-    output.push_str("MiniMax Media Pricing (reference):\n");
-    output.push_str("  Text (M2.1):     $0.20 / 1M input tokens\n");
+    output.push_str("Media Pricing (reference):\n");
+    output.push_str("  Text:            $0.20 / 1M input tokens\n");
     output.push_str("  Image gen:       $0.007 / image\n");
     output.push_str("  TTS (HD):        $0.0035 / 1K chars\n");
     output.push_str("  Video (768P):    $0.40 / 6s\n");

@@ -90,7 +90,7 @@ impl SearchView {
         for (cell_idx, cell) in history.iter().enumerate() {
             let (content, source) = match cell {
                 HistoryCell::User { content } => (content.clone(), "You"),
-                HistoryCell::Assistant { content, .. } => (content.clone(), "MiniMax"),
+                HistoryCell::Assistant { content, .. } => (content.clone(), "Assistant"),
                 HistoryCell::System { content } => (content.clone(), "System"),
                 HistoryCell::ThinkingSummary { summary } => (summary.clone(), "Thinking"),
                 _ => continue,
@@ -500,7 +500,7 @@ pub fn render_search_results(
 
         let source_style = match result.source.as_str() {
             "You" => Style::default().fg(palette::ORANGE).bold(),
-            "MiniMax" => Style::default().fg(palette::BLUE).bold(),
+            "Assistant" => Style::default().fg(palette::BLUE).bold(),
             "System" => Style::default().fg(palette::TEXT_MUTED).italic(),
             _ => Style::default().fg(palette::TEXT_PRIMARY),
         };

@@ -1,7 +1,7 @@
 //! Debug commands: tokens, cost, system, context, undo, retry, debug
 
 use super::CommandResult;
-use crate::models::{SystemPrompt, context_window_for_model};
+use crate::models::{context_window_for_model, SystemPrompt};
 use crate::pricing;
 use crate::tui::app::{App, AppAction, AppMode};
 use crate::tui::history::HistoryCell;
@@ -30,7 +30,7 @@ pub fn cost(app: &mut App) -> CommandResult {
         "Session Cost:\n\
          ─────────────────────────────\n\
          Total spent:      ${:.4}\n\n\
-         MiniMax API Pricing:\n\
+                   API Pricing:\n\
          ─────────────────────────────\n\
          Image generation: ${:.4}/image\n\
          Audio TTS (HD):   ${:.5}/char\n\

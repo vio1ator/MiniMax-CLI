@@ -1,4 +1,4 @@
-//! Interactive model picker for switching between MiniMax models.
+//! Interactive model picker for switching between models.
 //!
 //! Provides a simple list-based picker for available models with descriptions.
 
@@ -14,7 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
 };
 
-/// Information about a MiniMax model
+/// Information about a model
 #[derive(Debug, Clone)]
 pub struct ModelInfo {
     pub id: &'static str,
@@ -23,23 +23,23 @@ pub struct ModelInfo {
     pub capabilities: &'static str,
 }
 
-/// Available MiniMax models
+/// Available models
 pub const AVAILABLE_MODELS: &[ModelInfo] = &[
     ModelInfo {
-        id: "MiniMax-M2.1",
-        name: "MiniMax M2.1",
+        id: "model-01",
+        name: "Model 01",
         description: "General-purpose large language model with strong reasoning",
         capabilities: "Text generation, reasoning, analysis",
     },
     ModelInfo {
-        id: "MiniMax-Text-01",
-        name: "MiniMax Text 01",
+        id: "text-01",
+        name: "Text 01",
         description: "Text-optimized model for natural language tasks",
         capabilities: "Text generation, summarization, Q&A",
     },
     ModelInfo {
-        id: "MiniMax-Coding-01",
-        name: "MiniMax Coding 01",
+        id: "coding-01",
+        name: "Coding 01",
         description: "Code-specialized model for programming tasks",
         capabilities: "Code generation, debugging, review",
     },
@@ -309,16 +309,16 @@ mod tests {
 
     #[test]
     fn test_validate_model_exact_match() {
-        let model = validate_model("MiniMax-M2.1");
+        let model = validate_model("model-01");
         assert!(model.is_some());
-        assert_eq!(model.unwrap().id, "MiniMax-M2.1");
+        assert_eq!(model.unwrap().id, "model-01");
     }
 
     #[test]
     fn test_validate_model_case_insensitive() {
         let model = validate_model("claude-3-5-sonnet-20241022");
         assert!(model.is_some());
-        assert_eq!(model.unwrap().id, "MiniMax-M2.1");
+        assert_eq!(model.unwrap().id, "model-01");
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_model_picker_navigation() {
-        let mut picker = ModelPicker::new("MiniMax-M2.1".to_string());
+        let mut picker = ModelPicker::new("model-01".to_string());
         assert_eq!(picker.selected, 0);
 
         // Move down

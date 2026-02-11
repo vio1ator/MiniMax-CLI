@@ -65,7 +65,7 @@ impl HistoryCell {
         match self {
             HistoryCell::User { content } => render_message("You", content, user_style(), width),
             HistoryCell::Assistant { content, .. } => {
-                render_message("MiniMax", content, assistant_style(), width)
+                render_message("Assistant", content, assistant_style(), width)
             }
             HistoryCell::System { content } => {
                 render_message("System", content, system_style(), width)

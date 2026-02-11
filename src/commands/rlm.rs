@@ -13,7 +13,7 @@ const DEFAULT_CHUNK_OVERLAP: usize = 200;
 
 pub fn welcome_message() -> String {
     [
-        "MiniMax RLM Sandbox",
+        "Axiom RLM Sandbox",
         "Commands: /load <file>, /repl, /status, /save-session",
         "Press Tab to exit RLM mode",
         "Use /repl to toggle expression mode (chat is the default)",
