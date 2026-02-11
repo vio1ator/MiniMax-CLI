@@ -1,4 +1,4 @@
-//! Project context loading for minimax-cli.
+//! Project context loading for axiom-cli.
 //!
 //! This module handles loading project-specific context files that provide
 //! instructions and context to the AI agent. These include:
@@ -7,6 +7,7 @@
 //! - `.claude/instructions.md` - Claude-style hidden instructions
 //! - `CLAUDE.md` - Claude-style instructions
 //! - `.minimax/instructions.md` - Hidden instructions file (legacy)
+//! - `.axiom/instructions.md` - Hidden instructions file
 //!
 //! The loaded content is injected into the system prompt to give the agent
 //! context about the project's conventions, structure, and requirements.
@@ -220,7 +221,7 @@ pub fn create_default_agents_md(workspace: &Path) -> std::io::Result<PathBuf> {
 
     let default_content = r#"# Project Agent Instructions
 
-This file provides guidance to AI agents (MiniMax CLI, Claude Code, etc.) when working with code in this repository.
+ This file provides guidance to AI agents (Axiom CLI, Claude Code, etc.) when working with code in this repository.
 
 ## File Location
 

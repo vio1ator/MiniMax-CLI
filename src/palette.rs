@@ -1,6 +1,6 @@
-//! MiniMax color palette and semantic roles.
+//! Axiom color palette and semantic roles.
 //!
-//! This module provides the color palette used throughout the MiniMax TUI.
+//! This module provides the color palette used throughout the Axiom TUI.
 
 use ratatui::style::Color;
 

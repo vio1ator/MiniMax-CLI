@@ -1,8 +1,8 @@
-//! Cost estimation for `MiniMax` API tools
+//! Cost estimation for LLM API tools
 
 use serde_json::Value;
 
-/// `MiniMax` API Pricing constants (as of 2024)
+/// API Pricing constants (as of 2024)
 pub mod prices {
     /// Image generation: $0.0035 per image
     pub const IMAGE_PER_UNIT: f64 = 0.0035;

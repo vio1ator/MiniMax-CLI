@@ -78,9 +78,9 @@ pub struct Config {
     pub default_music_model: Option<String>,
 
     // === Coding API Configuration ===
-    /// Second API key for MiniMax Coding API (optional, falls back to primary)
+    /// Second API key (optional, falls back to primary)
     pub api_key_2: Option<String>,
-    /// Base URL for MiniMax Coding API (optional, falls back to primary)
+    /// Base URL for coding API (optional, falls back to primary)
     pub base_url_2: Option<String>,
     /// Default model for coding tasks
     pub default_coding_model: Option<String>,
@@ -169,7 +169,7 @@ impl Config {
         Ok(())
     }
 
-    /// Return the `MiniMax` base URL (normalized).
+    /// Return the base URL (normalized).
     #[must_use]
     pub fn axiom_base_url(&self) -> String {
         let base = self
@@ -179,7 +179,7 @@ impl Config {
         normalize_base_url(&base)
     }
 
-    /// Return the MiniMax Anthropic-compatible base URL (normalized).
+    /// Return the Anthropic-compatible base URL (normalized).
     #[must_use]
     pub fn anthropic_base_url(&self) -> String {
         let root = normalize_base_url(
@@ -199,7 +199,7 @@ impl Config {
 
     // === Coding API Methods ===
 
-    /// Return the MiniMax Coding API base URL (normalized).
+    /// Return the Coding API base URL (normalized).
     #[must_use]
     pub fn coding_base_url(&self) -> String {
         let base = self
@@ -209,7 +209,7 @@ impl Config {
         normalize_base_url(&base)
     }
 
-    /// Read the MiniMax Coding API key from config/environment.
+    /// Read the coding API key from config/environment.
     pub fn coding_api_key(&self) -> Result<String> {
         // Try api_key_2 first, fall back to primary api_key
         if let Some(ref key) = self.api_key_2
@@ -220,7 +220,7 @@ impl Config {
         // Fall back to primary API key
         self.api_key
             .clone()
-            .context("Failed to load MiniMax API key: AXIOM_API_KEY or AXIOM_API_KEY_2 missing. Set it in config.toml or environment.")
+             .context("Failed to load API key: AXIOM_API_KEY or AXIOM_API_KEY_2 missing. Set it in config.toml or environment.")
     }
 
     /// Return the default coding model, or fall back to text model if not set.
@@ -229,7 +229,7 @@ impl Config {
         self.default_coding_model
             .clone()
             .or_else(|| self.default_text_model.clone())
-            .unwrap_or_else(|| "MiniMax-M2.1-Coding".to_string())
+            .unwrap_or_else(|| "anthropic/claude-3-5-sonnet-20241022".to_string())
     }
 
     /// Check if coding API is configured with a separate key.
@@ -260,13 +260,11 @@ impl Config {
         }
     }
 
-    /// Read the `MiniMax` API key from config/environment.
+    /// Read the API key from config/environment.
     pub fn axiom_api_key(&self) -> Result<String> {
-        self.api_key
-            .clone()
-            .context(
-                "Failed to load MiniMax API key: AXIOM_API_KEY missing. Set it in config.toml or environment.",
-            )
+        self.api_key.clone().context(
+            "Failed to load API key: AXIOM_API_KEY missing. Set it in config.toml or environment.",
+        )
     }
 
     pub fn anthropic_api_key(&self) -> Result<String> {
@@ -744,7 +742,7 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
     } else {
         // Create new minimal config
         format!(
-            r#"# MiniMax CLI Configuration
+            r#" # Axiom CLI Configuration
 # Get your API key from https://platform.axiom.io
 
 api_key = "{api_key}"
@@ -752,8 +750,8 @@ api_key = "{api_key}"
 # Base URL (default: https://api.axiom.io)
 # base_url = "https://api.axiom.io"
 
-# Default model
-default_text_model = "MiniMax-M2.1"
+ # Default model
+ default_text_model = "anthropic/claude-3-5-sonnet-20241022"
 "#
         )
     };

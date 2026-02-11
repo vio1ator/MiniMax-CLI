@@ -1,4 +1,5 @@
-//! Core engine for `MiniMax` CLI.
+
+//! Core engine for Axiom CLI.
 //!
 //! The engine handles all AI interactions in a background task,
 //! communicating with the UI via channels. This enables:
@@ -91,7 +92,7 @@ pub struct EngineConfig {
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            model: "MiniMax-M2.1".to_string(),
+            model: "anthropic/claude-3-5-sonnet-20241022".to_string(),
             workspace: PathBuf::from("."),
             allow_shell: false,
             trust_mode: false,
@@ -694,7 +695,6 @@ impl Engine {
             .with_search_tools()
             .with_todo_tool(todo_list.clone())
             .with_plan_tool(plan_state.clone())
-            .with_axiom_tools()
             .with_git_tools()
             .with_artifact_tools()
             .with_execution_tools()

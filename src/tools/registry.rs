@@ -417,7 +417,6 @@ impl ToolRegistryBuilder {
             .with_plan_tool(plan_state)
             .with_artifact_tools()
             .with_execution_tools()
-            .with_axiom_tools()
     }
 
     /// Include RLM tools for context execution and sub-queries.
@@ -477,40 +476,6 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(AgentResultTool::new(manager.clone())))
             .with_tool(Arc::new(AgentCancelTool::new(manager.clone())))
             .with_tool(Arc::new(AgentListTool::new(manager)))
-    }
-
-    /// Include `MiniMax` tools (tts, `tts_async_create`, `tts_async_query`, `analyze_image`,
-    /// `generate_image`, `generate_video`, `generate_music`, `upload_file`, `list_files`, `retrieve_file`,
-    /// `download_file`, `delete_file`, `voice_clone`, `voice_list`, `voice_delete`, `voice_design`,
-    /// `query_video`, `generate_video_template`, `query_video_template`).
-    #[must_use]
-    pub fn with_axiom_tools(self) -> Self {
-        use super::minimax::{
-            AnalyzeImageTool, DeleteFileTool, DownloadFileTool, GenerateImageTool,
-            GenerateMusicTool, GenerateVideoTool, ListFilesTool, QueryVideoTool, RetrieveFileTool,
-            TtsAsyncCreateTool, TtsAsyncQueryTool, TtsTool, UploadFileTool,
-            VideoTemplateCreateTool, VideoTemplateQueryTool, VoiceCloneTool, VoiceDeleteTool,
-            VoiceDesignTool, VoiceListTool,
-        };
-        self.with_tool(Arc::new(TtsTool))
-            .with_tool(Arc::new(TtsAsyncCreateTool))
-            .with_tool(Arc::new(TtsAsyncQueryTool))
-            .with_tool(Arc::new(AnalyzeImageTool))
-            .with_tool(Arc::new(GenerateImageTool))
-            .with_tool(Arc::new(GenerateVideoTool))
-            .with_tool(Arc::new(QueryVideoTool))
-            .with_tool(Arc::new(GenerateMusicTool))
-            .with_tool(Arc::new(UploadFileTool))
-            .with_tool(Arc::new(ListFilesTool))
-            .with_tool(Arc::new(RetrieveFileTool))
-            .with_tool(Arc::new(DownloadFileTool))
-            .with_tool(Arc::new(DeleteFileTool))
-            .with_tool(Arc::new(VoiceCloneTool))
-            .with_tool(Arc::new(VoiceListTool))
-            .with_tool(Arc::new(VoiceDeleteTool))
-            .with_tool(Arc::new(VoiceDesignTool))
-            .with_tool(Arc::new(VideoTemplateCreateTool))
-            .with_tool(Arc::new(VideoTemplateQueryTool))
     }
 
     /// Build the registry with the given context.

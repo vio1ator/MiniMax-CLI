@@ -1,6 +1,6 @@
-//! `MiniMax` multimedia modules.
+//! Multimedia modules.
 //!
-//! These modules provide native `MiniMax` API access for:
+//! These modules provide native API access for:
 //! - Text-to-Speech (TTS) and voice cloning
 //! - Video generation (text-to-video, image-to-video)
 //! - Image generation
@@ -10,10 +10,3 @@
 //! Future work: Convert to agent tools with `ApprovalRequirement::Required`.
 
 #![allow(dead_code)] // Public API - multimedia functions for future tool integration
-
-pub mod audio;
-pub mod files;
-pub mod image;
-pub mod music;
-pub mod text;
-pub mod video;

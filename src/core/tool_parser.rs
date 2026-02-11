@@ -1,9 +1,9 @@
-//! Legacy parser for text-based tool calls from `MiniMax` API.
+//! Legacy parser for text-based tool calls.
 //!
 //! The Anthropic-compatible flow uses structured `tool_use` blocks, so the
 //! engine no longer invokes this parser. It is kept for reference/debugging.
 //!
-//! `MiniMax` M2.1 outputs tool calls as text in various formats:
+//! Some models output tool calls as text in various formats:
 //! ```text
 //! [TOOL_CALL]
 //! {tool => "tool_name", args => {...}}
@@ -12,11 +12,9 @@
 //!
 //! Or XML-style format:
 //! ```text
-//! <minimax:tool_call>
 //! <invoke name="tool_name">
 //! <parameter name="arg">value</parameter>
 //! </invoke>
-//! </minimax:tool_call>
 //! ```
 //!
 //! This module parses these text patterns into structured tool calls.

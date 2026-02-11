@@ -1,11 +1,11 @@
 //! Coding API tools for code generation and completion.
 //!
-//! These tools use the MiniMax Coding API for enhanced code generation capabilities.
+//! These tools use the LLM API for enhanced code generation capabilities.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::client::MiniMaxCodingClient;
+use crate::client::AnthropicClient;
 use crate::config::Config;
 use crate::models::{ContentBlock, Message, MessageRequest};
 use crate::tools::spec::{
@@ -13,21 +13,21 @@ use crate::tools::spec::{
     optional_str, required_str,
 };
 
-/// Tool for code generation using the MiniMax Coding API.
+/// Tool for code generation using the LLM API.
 pub struct CodingCompleteTool {
-    coding_client: MiniMaxCodingClient,
+    client: AnthropicClient,
 }
 
 impl CodingCompleteTool {
     /// Create a new CodingCompleteTool.
-    pub fn new(coding_client: MiniMaxCodingClient) -> Self {
-        Self { coding_client }
+    pub fn new(client: AnthropicClient) -> Self {
+        Self { client }
     }
 
     /// Create from config.
     pub fn from_config(config: &Config) -> Result<Self, anyhow::Error> {
-        let coding_client = MiniMaxCodingClient::new(config)?;
-        Ok(Self::new(coding_client))
+        let client = AnthropicClient::new(config)?;
+        Ok(Self::new(client))
     }
 }
 
@@ -104,7 +104,7 @@ impl ToolSpec for CodingCompleteTool {
         };
 
         let request = MessageRequest {
-            model: self.coding_client.default_model().to_string(),
+            model: self.client.default_model().to_string(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: vec![ContentBlock::Text {
@@ -124,7 +124,7 @@ impl ToolSpec for CodingCompleteTool {
         };
 
         let response = self
-            .coding_client
+            .client
             .create_message(request)
             .await
             .map_err(|e| ToolError::execution_failed(e.to_string()))?;
@@ -136,21 +136,21 @@ impl ToolSpec for CodingCompleteTool {
     }
 }
 
-/// Tool for code review using the MiniMax Coding API.
+/// Tool for code review using the LLM API.
 pub struct CodingReviewTool {
-    coding_client: MiniMaxCodingClient,
+    client: AnthropicClient,
 }
 
 impl CodingReviewTool {
     /// Create a new CodingReviewTool.
-    pub fn new(coding_client: MiniMaxCodingClient) -> Self {
-        Self { coding_client }
+    pub fn new(client: AnthropicClient) -> Self {
+        Self { client }
     }
 
     /// Create from config.
     pub fn from_config(config: &Config) -> Result<Self, anyhow::Error> {
-        let coding_client = MiniMaxCodingClient::new(config)?;
-        Ok(Self::new(coding_client))
+        let client = AnthropicClient::new(config)?;
+        Ok(Self::new(client))
     }
 }
 
@@ -213,7 +213,7 @@ impl ToolSpec for CodingReviewTool {
         );
 
         let request = MessageRequest {
-            model: self.coding_client.default_model().to_string(),
+            model: self.client.default_model().to_string(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: vec![ContentBlock::Text {
@@ -233,7 +233,7 @@ impl ToolSpec for CodingReviewTool {
         };
 
         let response = self
-            .coding_client
+            .client
             .create_message(request)
             .await
             .map_err(|e| ToolError::execution_failed(e.to_string()))?;

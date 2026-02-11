@@ -36,7 +36,7 @@ impl Default for CompactionConfig {
             enabled: true,          // Enable by default for better UX
             token_threshold: 80000, // 80K tokens ~ 320K chars
             message_threshold: 30,  // After 30 messages
-            model: "MiniMax-M2.1".to_string(),
+            model: "anthropic/claude-3-5-sonnet-20241022".to_string(),
             cache_summary: true,
             keep_recent: 6, // Keep last 6 messages as-is
         }

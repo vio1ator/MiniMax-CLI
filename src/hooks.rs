@@ -1,4 +1,4 @@
-//! Hooks system for `MiniMax` CLI
+//! Hooks system for Axiom CLI
 //!
 //! Provides lifecycle hooks that execute user-defined shell commands at:
 //! - Session start/end

@@ -1094,9 +1094,7 @@ fn run_repl(context_id: &str, initial_load: Option<&std::path::Path>) -> Result<
 
     println!(
         "{}",
-        "MiniMax RLM Sandbox"
-            .truecolor(blue_r, blue_g, blue_b)
-            .bold()
+        "Axiom RLM Sandbox".truecolor(blue_r, blue_g, blue_b).bold()
     );
     println!("Recursive Language Model - Local REPL Environment");
     println!("Type expressions or /help for commands.\n");

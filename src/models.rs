@@ -1,4 +1,4 @@
-//! API request/response models for `MiniMax` and Anthropic-compatible endpoints.
+//! API request/response models for LLM providers and Anthropic-compatible endpoints.
 
 use serde::{Deserialize, Serialize};
 

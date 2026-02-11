@@ -12,7 +12,6 @@ pub mod file;
 pub mod git;
 pub mod investigator;
 pub mod memory;
-pub mod minimax;
 pub mod patch;
 pub mod plan;
 pub mod registry;
@@ -48,14 +47,6 @@ pub use execution::ExecPythonTool;
 
 // Re-export investigator tools
 pub use investigator::CodebaseInvestigatorTool;
-
-// Re-export minimax tools
-pub use minimax::{
-    AnalyzeImageTool, DeleteFileTool, DownloadFileTool, GenerateImageTool, GenerateMusicTool,
-    GenerateVideoTool, ListFilesTool, QueryVideoTool, RetrieveFileTool, TtsAsyncCreateTool,
-    TtsAsyncQueryTool, TtsTool, UploadFileTool, VideoTemplateCreateTool, VideoTemplateQueryTool,
-    VoiceCloneTool, VoiceDeleteTool, VoiceDesignTool, VoiceListTool,
-};
 
 // Re-export registry types
 pub use registry::{ToolRegistry, ToolRegistryBuilder};

@@ -759,7 +759,7 @@ where
             session_id: "".to_string(),
         })?;
 
-    let coding_model = "MiniMax-M2.1-Coding".to_string();
+    let coding_model = "anthropic/claude-3-5-sonnet-20241022".to_string();
 
     while !state.is_complete() {
         match state.phase {
