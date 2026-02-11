@@ -185,8 +185,8 @@ async fn process_anthropic_turn(
         top_p: options.top_p,
     };
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
 
     if options.stream {
         let stream = client.create_message_stream(request).await?;
@@ -550,14 +550,14 @@ fn handle_command_official(
 }
 
 fn print_banner(mode: &str) {
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
     println!("{}", "MiniMax CLI".truecolor(blue_r, blue_g, blue_b).bold());
     println!("Mode: {mode}");
     println!("Type /help for commands. Use /exit to quit.\n");
 }
 
 fn print_help() {
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
     println!(
         "{}",
         "Commands:".truecolor(orange_r, orange_g, orange_b).bold()
@@ -571,7 +571,7 @@ fn print_help() {
 
 fn print_session_info(options: &TextChatOptions, messages: usize, tools: usize) {
     let width = 56usize;
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
     let header = "Session Info";
     println!("┌{}┐", "─".repeat(width));
     println!(
@@ -606,7 +606,7 @@ fn print_stats(stats: &SessionStats) {
     let minutes = (seconds % 3600) / 60;
     let secs = seconds % 60;
 
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
     println!(
         "{}",
         "Session Stats"
@@ -758,7 +758,7 @@ async fn handle_line_anthropic(
         return Ok(false);
     }
     if let Err(error) = process_anthropic_turn(client, options, messages, input, stats).await {
-        let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
+        let (red_r, red_g, red_b) = palette::RED_RGB;
         eprintln!(
             "{} {}",
             "Error:".truecolor(red_r, red_g, red_b).bold(),
@@ -787,7 +787,7 @@ async fn handle_line_official(
         return Ok(false);
     }
     if let Err(error) = process_official_turn(client, options, messages, input, stats).await {
-        let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
+        let (red_r, red_g, red_b) = palette::RED_RGB;
         eprintln!(
             "{} {}",
             "Error:".truecolor(red_r, red_g, red_b).bold(),

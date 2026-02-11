@@ -396,9 +396,9 @@ mod tests {
         assert!(!check_trust_status(tmp.path()));
 
         // Create trust marker
-        let minimax_dir = tmp.path().join(".minimax");
-        fs::create_dir(&minimax_dir).expect("mkdir");
-        fs::write(minimax_dir.join("trusted"), "").expect("write");
+        let axiom_dir = tmp.path().join(".minimax");
+        fs::create_dir(&axiom_dir).expect("mkdir");
+        fs::write(axiom_dir.join("trusted"), "").expect("write");
 
         assert!(check_trust_status(tmp.path()));
     }

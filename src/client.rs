@@ -38,7 +38,7 @@ pub struct AnthropicClient {
 
 // === Helpers ===
 
-fn is_minimax_base_url(base_url: &str) -> bool {
+fn is_axiom_base_url(base_url: &str) -> bool {
     let base = base_url.to_lowercase();
     base.contains("api.minimax.io") || base.contains("api.minimaxi.com")
 }
@@ -59,8 +59,8 @@ impl MiniMaxClient {
     /// # }
     /// ```
     pub fn new(config: &Config) -> Result<Self> {
-        let api_key = config.minimax_api_key()?;
-        let base_url = config.minimax_base_url();
+        let api_key = config.axiom_api_key()?;
+        let base_url = config.axiom_base_url();
         let retry = config.retry_policy();
 
         logging::info(format!("MiniMax base URL: {base_url}"));
@@ -167,7 +167,7 @@ impl MiniMaxClient {
 
     /// Fetch raw bytes from a URL, using auth headers for MiniMax-hosted URLs.
     pub async fn get_bytes(&self, url: &str) -> Result<bytes::Bytes> {
-        let client = if is_minimax_base_url(url) {
+        let client = if is_axiom_base_url(url) {
             &self.http_client
         } else {
             &self.raw_http_client
@@ -191,7 +191,7 @@ impl MiniMaxClient {
         query: &[(&str, &str)],
     ) -> Result<(bytes::Bytes, Option<String>)> {
         let url = self.url(path);
-        let client = if is_minimax_base_url(&url) {
+        let client = if is_axiom_base_url(&url) {
             &self.http_client
         } else {
             &self.raw_http_client
@@ -263,7 +263,7 @@ impl AnthropicClient {
         let base_url = config.anthropic_base_url();
         let api_key = config.anthropic_api_key()?;
         let retry = config.retry_policy();
-        let is_minimax = is_minimax_base_url(&base_url);
+        let is_minimax = is_axiom_base_url(&base_url);
 
         logging::info(format!("Compatible base URL: {base_url}"));
         logging::info(format!(

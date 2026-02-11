@@ -234,7 +234,7 @@ fn confirm(prompt: &str) -> bool {
 }
 
 fn get_config_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("MINIMAX_CONFIG_PATH")
+    if let Ok(path) = std::env::var("AXIOM_CONFIG_PATH")
         && !path.trim().is_empty()
     {
         return Some(PathBuf::from(path));

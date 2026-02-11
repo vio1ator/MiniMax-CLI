@@ -6,7 +6,7 @@ MiniMax CLI can load additional tools via MCP (Model Context Protocol). MCP serv
 
 Default path:
 
-- `~/.minimax/mcp.json`
+- `~/.axiom/mcp.json`
 
 Overrides:
 
@@ -61,7 +61,7 @@ MCP tools currently execute without TUI approval prompts. Only configure MCP ser
 
 ## Troubleshooting
 
-- Run `minimax doctor` to confirm whether the default `~/.minimax/mcp.json` exists.
-- If you override `mcp_config_path` / `MINIMAX_MCP_CONFIG`, note that `minimax doctor` still checks `~/.minimax/mcp.json`.
+- Run `minimax doctor` to confirm whether the default `~/.axiom/mcp.json` exists.
+- If you override `mcp_config_path` / `MINIMAX_MCP_CONFIG`, note that `minimax doctor` still checks `~/.axiom/mcp.json`.
 - If tools don’t appear, verify the server command works from your shell and that the server supports MCP `tools/list`.
 

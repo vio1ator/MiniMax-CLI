@@ -32,7 +32,7 @@ minimax duo sessions                                     # List all saved sessio
 
 ## Session Persistence
 
-Sessions are automatically saved after each turn to `~/.minimax/sessions/duo/` as JSON files. Each session records:
+Sessions are automatically saved after each turn to `~/.axiom/sessions/duo/` as JSON files. Each session records:
 
 - Requirements and configuration
 - Phase history (player/coach turns)

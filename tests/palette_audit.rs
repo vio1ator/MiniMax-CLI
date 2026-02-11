@@ -1,7 +1,7 @@
 //! Palette audit tests to prevent color drift.
 //!
 //! These tests ensure that ANSI color shorthands do not sneak back into
-//! user-visible output. Use the MiniMax palette constants instead.
+//! user-visible output. Use the Axiom palette constants instead.
 
 use std::fs;
 use std::path::Path;
@@ -90,24 +90,24 @@ fn verify_brand_colors_defined() {
     let content = fs::read_to_string(&palette_path).expect("Failed to read palette.rs");
 
     assert!(
-        content.contains("MINIMAX_BLUE_RGB: (u8, u8, u8) = (20, 86, 240)"),
-        "MINIMAX_BLUE should be #1456F0"
+        content.contains("BLUE_RGB: (u8, u8, u8) = (20, 86, 240)"),
+        "BLUE should be #1456F0"
     );
     assert!(
-        content.contains("MINIMAX_RED_RGB: (u8, u8, u8) = (242, 63, 93)"),
-        "MINIMAX_RED should be #F23F5D"
+        content.contains("RED_RGB: (u8, u8, u8) = (242, 63, 93)"),
+        "RED should be #F23F5D"
     );
     assert!(
-        content.contains("MINIMAX_ORANGE_RGB: (u8, u8, u8) = (255, 99, 58)"),
-        "MINIMAX_ORANGE should be #FF633A"
+        content.contains("ORANGE_RGB: (u8, u8, u8) = (255, 99, 58)"),
+        "ORANGE should be #FF633A"
     );
     assert!(
-        content.contains("MINIMAX_MAGENTA_RGB: (u8, u8, u8) = (228, 23, 127)"),
-        "MINIMAX_MAGENTA should be #E4177F"
+        content.contains("MAGENTA_RGB: (u8, u8, u8) = (228, 23, 127)"),
+        "MAGENTA should be #E4177F"
     );
     assert!(
-        content.contains("MINIMAX_GREEN_RGB: (u8, u8, u8) = (74, 222, 128)"),
-        "MINIMAX_GREEN should be #4ADE80"
+        content.contains("GREEN_RGB: (u8, u8, u8) = (74, 222, 128)"),
+        "GREEN should be #4ADE80"
     );
 }
 
@@ -118,23 +118,23 @@ fn verify_semantic_tokens() {
     let content = fs::read_to_string(&palette_path).expect("Failed to read palette.rs");
 
     assert!(
-        content.contains("pub const TEXT_PRIMARY: Color = MINIMAX_SNOW;"),
-        "TEXT_PRIMARY should use MINIMAX_SNOW"
+        content.contains("pub const TEXT_PRIMARY: Color = SNOW;"),
+        "TEXT_PRIMARY should use SNOW"
     );
     assert!(
-        content.contains("pub const STATUS_SUCCESS: Color = MINIMAX_GREEN;"),
-        "STATUS_SUCCESS should use MINIMAX_GREEN"
+        content.contains("pub const STATUS_SUCCESS: Color = GREEN;"),
+        "STATUS_SUCCESS should use GREEN"
     );
     assert!(
-        content.contains("pub const STATUS_WARNING: Color = MINIMAX_ORANGE;"),
-        "STATUS_WARNING should use MINIMAX_ORANGE"
+        content.contains("pub const STATUS_WARNING: Color = ORANGE;"),
+        "STATUS_WARNING should use ORANGE"
     );
     assert!(
-        content.contains("pub const STATUS_ERROR: Color = MINIMAX_RED;"),
-        "STATUS_ERROR should use MINIMAX_RED"
+        content.contains("pub const STATUS_ERROR: Color = RED;"),
+        "STATUS_ERROR should use RED"
     );
     assert!(
-        content.contains("pub const STATUS_INFO: Color = MINIMAX_BLUE;"),
-        "STATUS_INFO should use MINIMAX_BLUE"
+        content.contains("pub const STATUS_INFO: Color = BLUE;"),
+        "STATUS_INFO should use BLUE"
     );
 }

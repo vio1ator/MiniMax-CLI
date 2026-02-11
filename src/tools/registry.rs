@@ -417,7 +417,7 @@ impl ToolRegistryBuilder {
             .with_plan_tool(plan_state)
             .with_artifact_tools()
             .with_execution_tools()
-            .with_minimax_tools()
+            .with_axiom_tools()
     }
 
     /// Include RLM tools for context execution and sub-queries.
@@ -484,7 +484,7 @@ impl ToolRegistryBuilder {
     /// `download_file`, `delete_file`, `voice_clone`, `voice_list`, `voice_delete`, `voice_design`,
     /// `query_video`, `generate_video_template`, `query_video_template`).
     #[must_use]
-    pub fn with_minimax_tools(self) -> Self {
+    pub fn with_axiom_tools(self) -> Self {
         use super::minimax::{
             AnalyzeImageTool, DeleteFileTool, DownloadFileTool, GenerateImageTool,
             GenerateMusicTool, GenerateVideoTool, ListFilesTool, QueryVideoTool, RetrieveFileTool,

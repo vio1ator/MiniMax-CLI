@@ -68,7 +68,7 @@ impl ErrorType {
 /// # Examples
 ///
 /// ```
-/// use minimax_cli::error_hints::{get_error_hint, ErrorType};
+/// use axiom_cli::error_hints::{get_error_hint, ErrorType};
 ///
 /// let error = "HTTP 429: rate limit exceeded";
 /// if let Some(hint) = get_error_hint(error) {

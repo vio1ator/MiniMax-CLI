@@ -15,7 +15,7 @@ This document summarizes the improvements made to bring MiniMax CLI to the level
   - System prompt preview
 
 - **`/reload`** - Reloads configuration from disk without restarting:
-  - Reloads `~/.minimax/config.toml`
+  - Reloads `~/.axiom/config.toml`
   - Reloads persistent settings
   - Applies changes to current session
 
@@ -120,7 +120,7 @@ This document summarizes the improvements made to bring MiniMax CLI to the level
   5. Default mode selection (Normal, Agent, YOLO)
   6. Shell permissions (yes/no)
   7. Summary and confirmation
-- Saves to `~/.minimax/config.toml`
+- Saves to `~/.axiom/config.toml`
 - Automatically reloads configuration
 
 ## Phase 12: YOLO Mode Toggle ✅

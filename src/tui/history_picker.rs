@@ -219,8 +219,8 @@ impl HistoryPicker {
         // Selection style
         let base_style = if is_selected {
             Style::default()
-                .bg(palette::MINIMAX_BLUE)
-                .fg(palette::MINIMAX_SNOW)
+                .bg(palette::BLUE)
+                .fg(palette::SNOW)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_PRIMARY)
@@ -237,7 +237,7 @@ impl HistoryPicker {
         // Format metadata line
         let age = self.format_age(entry.timestamp);
         let meta_style = if is_selected {
-            Style::default().fg(palette::MINIMAX_SILVER)
+            Style::default().fg(palette::SILVER)
         } else {
             Style::default().fg(palette::TEXT_DIM)
         };
@@ -283,9 +283,7 @@ impl HistoryPicker {
             if idx < chars.len() {
                 spans.push(Span::styled(
                     chars[idx].to_string(),
-                    base_style
-                        .add_modifier(Modifier::BOLD)
-                        .fg(palette::MINIMAX_YELLOW),
+                    base_style.add_modifier(Modifier::BOLD).fg(palette::YELLOW),
                 ));
                 last_idx = idx + 1;
             }
@@ -376,7 +374,7 @@ impl ModalView for HistoryPicker {
         let block = Block::default()
             .title(" Command History ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(palette::MINIMAX_BLUE));
+            .border_style(Style::default().fg(palette::BLUE));
         let inner = block.inner(popup_area);
         block.render(popup_area, buf);
 
@@ -430,7 +428,7 @@ impl ModalView for HistoryPicker {
             Line::from(vec![Span::styled(
                 "Preview:",
                 Style::default()
-                    .fg(palette::MINIMAX_ORANGE)
+                    .fg(palette::ORANGE)
                     .add_modifier(Modifier::BOLD),
             )]),
             Line::from(vec![Span::styled(

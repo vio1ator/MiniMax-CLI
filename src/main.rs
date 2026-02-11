@@ -1,4 +1,4 @@
-//! CLI entry point for the `MiniMax` client.
+//! CLI entry point for the `Axiom` client.
 
 use std::io;
 use std::path::PathBuf;
@@ -46,24 +46,24 @@ use crate::llm_client::LlmClient;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "minimax",
+    name = "axiom",
     author,
     version,
-    about = "MiniMax CLI - AI Coding Assistant",
-    long_about = "MiniMax CLI - Professional AI Coding Assistant\n\n\
-    ✨ MiniMax M2.1: General-purpose AI chat\n\
-    🔷 MiniMax Coding API: Specialized code generation and review\n\
+    about = "Axiom CLI - AI Coding Assistant",
+    long_about = "Axiom CLI - Professional AI Coding Assistant\n\n\
+    ✨ Axiom: General-purpose AI chat\n\
+    🔷 Axiom Coding API: Specialized code generation and review\n\
     📚 RLM Mode: Recursive Language Model with context management\n\
     🎯 Duo Mode: Player-Coach adversarial cooperation for autocoding\n\n\
-    🚀 Get started: Just run 'minimax' to start chatting!\n\
-    📖 Learn more: Run 'minimax modes' to see all available modes\n\n\
-    Not affiliated with MiniMax Inc.",
+    🚀 Get started: Just run 'axiom' to start chatting!\n\
+    📖 Learn more: Run 'axiom modes' to see all available modes\n\n\
+    Not affiliated with Axiom Inc.",
     after_help = "Examples:\
-    \\n   minimax                    # Start interactive chat\
-    \\n   minimax modes              # Show all available modes\
-    \\n   minimax rlm                # Enter RLM mode\
-    \\n   minimax duo                # Enter Duo autocoding mode\
-    \\n   minimax coding --help      # Show coding mode options"
+    \\n   axiom                    # Start interactive chat\
+    \\n   axiom modes              # Show all available modes\
+    \\n   axiom rlm                # Enter RLM mode\
+    \\n   axiom duo                # Enter Duo autocoding mode\
+    \\n   axiom coding --help      # Show coding mode options"
 )]
 struct Cli {
     /// Subcommand to run
@@ -134,7 +134,7 @@ enum Commands {
     },
     /// Create default AGENTS.md in current directory
     Init,
-    /// Smoke test MiniMax media generation (writes real files)
+    /// Smoke test Axiom media generation (writes real files)
     SmokeMedia {
         /// Confirm you want to spend credits and write files
         #[arg(long)]
@@ -161,7 +161,7 @@ enum Commands {
         #[arg(long, default_value = "music-1.5")]
         music_model: String,
         /// Text for text-to-speech generation
-        #[arg(long, default_value = "Hello from MiniMax CLI smoke test.")]
+        #[arg(long, default_value = "Hello from Axiom CLI smoke test.")]
         tts_text: String,
         /// TTS model name
         #[arg(long, default_value = "speech-02-hd")]
@@ -173,12 +173,12 @@ enum Commands {
         )]
         video_prompt: String,
         /// Video model name
-        #[arg(long, default_value = "MiniMax-Hailuo-02")]
+        #[arg(long, default_value = "video-01")]
         video_model: String,
         /// Video duration in seconds
         #[arg(long, default_value_t = 6)]
         video_duration: u32,
-        /// Video resolution (MiniMax supports 512P, 768P, 1080P; 720p maps to 768P)
+        /// Video resolution (Axiom supports 512P, 768P, 1080P; 720p maps to 768P)
         #[arg(long, default_value = "768P")]
         video_resolution: String,
         /// Submit video generation without waiting/downloading
@@ -207,7 +207,7 @@ enum Commands {
     Rlm(RlmCommand),
     /// Duo autocoding mode - Player-Coach adversarial cooperation
     Duo(DuoCommand),
-    /// MiniMax Coding API - specialized code generation and review
+    /// Axiom Coding API - specialized code generation and review
     Coding(CodingCommand),
     /// Run a code review over a git diff
     Review(ReviewArgs),
@@ -416,7 +416,7 @@ struct CodingCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 enum CodingSubcommand {
-    /// Generate code using MiniMax Coding API
+    /// Generate code using Axiom Coding API
     Complete {
         /// Code prompt/description
         #[arg(required = true, trailing_var_arg = true)]
@@ -434,7 +434,7 @@ enum CodingSubcommand {
         #[arg(short, long)]
         temperature: Option<f32>,
     },
-    /// Review code using MiniMax Coding API
+    /// Review code using Axiom Coding API
     Review {
         /// File path to review
         #[arg(required = true)]
@@ -626,7 +626,7 @@ async fn main() -> Result<()> {
                     .model
                     .clone()
                     .or_else(|| config.default_text_model.clone())
-                    .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+                    .unwrap_or_else(|| "model-01".to_string());
                 if args.auto || cli.yolo {
                     run_exec_agent(&config, &model, &args.prompt).await
                 } else {
@@ -657,7 +657,7 @@ async fn main() -> Result<()> {
     let model = config
         .default_text_model
         .clone()
-        .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+        .unwrap_or_else(|| "model-01".to_string());
     let max_subagents = cli
         .max_subagents
         .map_or_else(|| config.max_subagents(), |value| value.clamp(1, 5));
@@ -704,7 +704,7 @@ fn load_config_from_cli(cli: &Cli) -> Result<Config> {
     let profile = cli
         .profile
         .clone()
-        .or_else(|| std::env::var("MINIMAX_PROFILE").ok());
+        .or_else(|| std::env::var("AXIOM_PROFILE").ok());
     let mut config = Config::load(cli.config.clone(), profile.as_deref())?;
     cli.feature_toggles.apply(&mut config)?;
     Ok(config)
@@ -881,9 +881,9 @@ fn parse_sandbox_policy(
 fn run_modes() {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
 
     println!();
     println!(
@@ -893,7 +893,7 @@ fn run_modes() {
     );
     println!(
         "{}",
-        "║                     MiniMax CLI Modes                             ║"
+        "║                     Axiom CLI Modes                             ║"
             .truecolor(blue_r, blue_g, blue_b)
     );
     println!(
@@ -910,16 +910,13 @@ fn run_modes() {
             .truecolor(green_r, green_g, green_b)
             .bold()
     );
-    println!("   Run: {}", "minimax".truecolor(blue_r, blue_g, blue_b));
-    println!("   General-purpose AI chat powered by MiniMax M2.1");
+    println!("   Run: {}", "axiom".truecolor(blue_r, blue_g, blue_b));
+    println!("   General-purpose AI chat powered by Axiom model-01");
     println!();
 
     // RLM Mode
     println!("{}  📚 RLM Mode", "🔷".truecolor(blue_r, blue_g, blue_b));
-    println!(
-        "   Run: {}",
-        "minimax rlm".truecolor(blue_r, blue_g, blue_b)
-    );
+    println!("   Run: {}", "axiom rlm".truecolor(blue_r, blue_g, blue_b));
     println!("   Recursive Language Model - context loading, searching, chunking");
     println!("   - Load files and search within them");
     println!("   - Chunk large documents for context management");
@@ -928,10 +925,7 @@ fn run_modes() {
 
     // Duo Mode
     println!("{}  🎯 Duo Mode", "🔷".truecolor(blue_r, blue_g, blue_b));
-    println!(
-        "   Run: {}",
-        "minimax duo".truecolor(blue_r, blue_g, blue_b)
-    );
+    println!("   Run: {}", "axiom duo".truecolor(blue_r, blue_g, blue_b));
     println!("   Player-Coach adversarial cooperation for autocoding");
     println!("   - Player: implements requirements (builder role)");
     println!("   - Coach: validates implementation against requirements (critic role)");
@@ -940,12 +934,12 @@ fn run_modes() {
 
     // Coding API
     println!(
-        "{}  🔷 MiniMax Coding API",
+        "{}  🔷 Axiom Coding API",
         "🔷".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
         "   Run: {}",
-        "minimax coding".truecolor(blue_r, blue_g, blue_b)
+        "axiom coding".truecolor(blue_r, blue_g, blue_b)
     );
     println!("   Specialized code generation and review");
     println!("   - Generate code from prompts");
@@ -957,15 +951,15 @@ fn run_modes() {
         "{}  Other Commands",
         "📋".truecolor(orange_r, orange_g, orange_b).bold()
     );
-    println!("   minimax doctor     - Run system diagnostics");
-    println!("   minimax sessions   - List saved sessions");
-    println!("   minimax review     - Code review via git diff");
-    println!("   minimax exec       - Non-interactive agentic execution");
-    println!("   minimax setup      - Bootstrap MCP config and skills");
-    println!("   minimax mcp        - Manage MCP servers");
-    println!("   minimax init       - Create AGENTS.md template");
-    println!("   minimax sandbox    - Run commands in sandbox");
-    println!("   minimax completions - Generate shell completions");
+    println!("   axiom doctor     - Run system diagnostics");
+    println!("   axiom sessions   - List saved sessions");
+    println!("   axiom review     - Code review via git diff");
+    println!("   axiom exec       - Non-interactive agentic execution");
+    println!("   axiom setup      - Bootstrap MCP config and skills");
+    println!("   axiom mcp        - Manage MCP servers");
+    println!("   axiom init       - Create AGENTS.md template");
+    println!("   axiom sandbox    - Run commands in sandbox");
+    println!("   axiom completions - Generate shell completions");
     println!();
 
     println!(
@@ -1036,7 +1030,7 @@ fn run_rlm_command(command: RlmCommand) -> Result<()> {
 fn print_rlm_info() {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
 
     println!();
     println!(
@@ -1063,27 +1057,27 @@ fn print_rlm_info() {
     println!("Commands:");
     println!();
     println!(
-        "  {}  minimax rlm repl               Enter interactive REPL",
+        "  {}  axiom rlm repl               Enter interactive REPL",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax rlm load <path>        Load file into context",
+        "  {}  axiom rlm load <path>        Load file into context",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax rlm search <pattern>   Search in context",
+        "  {}  axiom rlm search <pattern>   Search in context",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax rlm status             Show loaded contexts",
+        "  {}  axiom rlm status             Show loaded contexts",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax rlm save <path>        Save session",
+        "  {}  axiom rlm save <path>        Save session",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax rlm load-session <path> Load session",
+        "  {}  axiom rlm load-session <path> Load session",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!();
@@ -1127,7 +1121,7 @@ async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
 
             let session_dir = dirs::config_dir()
                 .ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?
-                .join("minimax")
+                .join("axiom")
                 .join("sessions")
                 .join("duo");
 
@@ -1153,9 +1147,9 @@ async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
             println!(
                 "\n{}: Session created successfully",
                 "✓".truecolor(
-                    palette::MINIMAX_GREEN_RGB.0,
-                    palette::MINIMAX_GREEN_RGB.1,
-                    palette::MINIMAX_GREEN_RGB.2
+                    palette::GREEN_RGB.0,
+                    palette::GREEN_RGB.1,
+                    palette::GREEN_RGB.2
                 )
             );
             println!("  Session ID: {}", &session_id[..8]);
@@ -1166,9 +1160,9 @@ async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
             println!(
                 "\n{}: Session saved to disk",
                 "✓".truecolor(
-                    palette::MINIMAX_GREEN_RGB.0,
-                    palette::MINIMAX_GREEN_RGB.1,
-                    palette::MINIMAX_GREEN_RGB.2
+                    palette::GREEN_RGB.0,
+                    palette::GREEN_RGB.1,
+                    palette::GREEN_RGB.2
                 )
             );
             println!(
@@ -1190,9 +1184,9 @@ async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
                 println!(
                     "\n{}: Session loaded successfully",
                     "✓".truecolor(
-                        palette::MINIMAX_GREEN_RGB.0,
-                        palette::MINIMAX_GREEN_RGB.1,
-                        palette::MINIMAX_GREEN_RGB.2
+                        palette::GREEN_RGB.0,
+                        palette::GREEN_RGB.1,
+                        palette::GREEN_RGB.2
                     )
                 );
                 println!("  Session ID: {}", state.session_id);
@@ -1245,7 +1239,7 @@ async fn run_duo_command(cli: &Cli, command: DuoCommand) -> Result<()> {
 fn print_duo_info() {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
 
     println!();
     println!(
@@ -1277,15 +1271,15 @@ fn print_duo_info() {
     println!("Commands:");
     println!();
     println!(
-        "  {}  minimax duo start              Start new autocoding session",
+        "  {}  axiom duo start              Start new autocoding session",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax duo continue <id>      Continue existing session",
+        "  {}  axiom duo continue <id>      Continue existing session",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax duo sessions           List all sessions",
+        "  {}  axiom duo sessions           List all sessions",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!();
@@ -1318,9 +1312,9 @@ fn run_coding_command(command: CodingCommand) -> Result<()> {
             println!(
                 "\n{}: Coding API integration in progress",
                 "Note".truecolor(
-                    palette::MINIMAX_ORANGE_RGB.0,
-                    palette::MINIMAX_ORANGE_RGB.1,
-                    palette::MINIMAX_ORANGE_RGB.2
+                    palette::ORANGE_RGB.0,
+                    palette::ORANGE_RGB.1,
+                    palette::ORANGE_RGB.2
                 )
             );
         }
@@ -1331,9 +1325,9 @@ fn run_coding_command(command: CodingCommand) -> Result<()> {
             println!(
                 "\n{}: Coding API integration in progress",
                 "Note".truecolor(
-                    palette::MINIMAX_ORANGE_RGB.0,
-                    palette::MINIMAX_ORANGE_RGB.1,
-                    palette::MINIMAX_ORANGE_RGB.2
+                    palette::ORANGE_RGB.0,
+                    palette::ORANGE_RGB.1,
+                    palette::ORANGE_RGB.2
                 )
             );
         }
@@ -1347,7 +1341,7 @@ fn run_coding_command(command: CodingCommand) -> Result<()> {
 fn print_coding_info() {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
 
     println!();
     println!(
@@ -1367,18 +1361,18 @@ fn print_coding_info() {
     );
     println!();
     println!(
-        "{}  MiniMax Coding API - specialized code generation and review",
+        "{}  Axiom Coding API - specialized code generation and review",
         "🔷".truecolor(blue_r, blue_g, blue_b)
     );
     println!();
     println!("Commands:");
     println!();
     println!(
-        "  {}  minimax coding complete <prompt>  Generate code",
+        "  {}  axiom coding complete <prompt>  Generate code",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!(
-        "  {}  minimax coding review <path>      Review code",
+        "  {}  axiom coding review <path>      Review code",
         "→".truecolor(blue_r, blue_g, blue_b)
     );
     println!();
@@ -1397,31 +1391,28 @@ fn print_coding_info() {
 async fn run_doctor() {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (red_r, red_g, red_b) = palette::RED_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     println!(
         "{}",
-        "MiniMax CLI Doctor"
-            .truecolor(blue_r, blue_g, blue_b)
-            .bold()
+        "Axiom CLI Doctor".truecolor(blue_r, blue_g, blue_b).bold()
     );
     println!("{}", "==================".truecolor(blue_r, blue_g, blue_b));
     println!();
 
     // Version info
     println!("{}", "Version Information:".bold());
-    println!("  minimax-cli: {}", env!("CARGO_PKG_VERSION"));
+    println!("  axiom-cli: {}", env!("CARGO_PKG_VERSION"));
     println!("  rust: {}", rustc_version());
     println!();
 
     // Check configuration
     println!("{}", "Configuration:".bold());
-    let config_dir =
-        dirs::home_dir().map_or_else(|| PathBuf::from(".minimax"), |h| h.join(".minimax"));
+    let config_dir = dirs::home_dir().map_or_else(|| PathBuf::from(".axiom"), |h| h.join(".axiom"));
 
     let config_file = config_dir.join("config.toml");
     if config_file.exists() {
@@ -1440,29 +1431,29 @@ async fn run_doctor() {
     // Check API keys
     println!();
     println!("{}", "API Keys:".bold());
-    let has_api_key = if std::env::var("MINIMAX_API_KEY").is_ok() {
+    let has_api_key = if std::env::var("AXIOM_API_KEY").is_ok() {
         println!(
-            "  {} MINIMAX_API_KEY is set",
+            "  {} AXIOM_API_KEY is set",
             "✓".truecolor(green_r, green_g, green_b)
         );
         true
     } else {
         let key_in_config = Config::load(None, None)
             .ok()
-            .and_then(|c| c.minimax_api_key().ok())
+            .and_then(|c| c.axiom_api_key().ok())
             .is_some();
         if key_in_config {
             println!(
-                "  {} MiniMax API key found in config",
+                "  {} Axiom API key found in config",
                 "✓".truecolor(green_r, green_g, green_b)
             );
             true
         } else {
             println!(
-                "  {} MiniMax API key not configured",
+                "  {} Axiom API key not configured",
                 "✗".truecolor(red_r, red_g, red_b)
             );
-            println!("    Run 'minimax' to configure interactively, or set MINIMAX_API_KEY");
+            println!("    Run 'axiom' to configure interactively, or set AXIOM_API_KEY");
             false
         }
     };
@@ -1472,7 +1463,7 @@ async fn run_doctor() {
     println!("{}", "API Connectivity:".bold());
     if has_api_key {
         print!(
-            "  {} Testing connection to MiniMax API...",
+            "  {} Testing connection to Axiom API...",
             "·".truecolor(muted_r, muted_g, muted_b)
         );
         // Flush to show progress immediately
@@ -1496,15 +1487,15 @@ async fn run_doctor() {
                 // Provide helpful diagnostics based on error type
                 if error_msg.contains("401") || error_msg.contains("Unauthorized") {
                     println!("    {}", "✗ Invalid API key".truecolor(red_r, red_g, red_b));
-                    println!("    → Check your MINIMAX_API_KEY or config.toml");
-                    println!("    → Verify your API key is active at https://platform.minimax.io");
+                    println!("    → Check your AXIOM_API_KEY or config.toml");
+                    println!("    → Verify your API key is active at https://platform.axiom.io");
                     println!("    → Keys look like: sk-api-...");
                 } else if error_msg.contains("403") || error_msg.contains("Forbidden") {
                     println!(
                         "    {}",
                         "✗ API key lacks permissions".truecolor(red_r, red_g, red_b)
                     );
-                    println!("    → Verify your API key is active at https://platform.minimax.io");
+                    println!("    → Verify your API key is active at https://platform.axiom.io");
                     println!("    → You may need to generate a new API key");
                 } else if error_msg.contains("timeout") || error_msg.contains("Timeout") {
                     println!(
@@ -1514,7 +1505,7 @@ async fn run_doctor() {
                     println!("    → Check your network connection");
                     println!("    → Try again - this may be a temporary issue");
                     println!(
-                        "    → China users: try setting MINIMAX_BASE_URL=https://api.minimaxi.com"
+                        "    → China users: try setting AXIOM_BASE_URL=https://api.axiomi.com"
                     );
                 } else if error_msg.contains("dns") || error_msg.contains("resolve") {
                     println!(
@@ -1522,7 +1513,7 @@ async fn run_doctor() {
                         "✗ DNS resolution failed".truecolor(red_r, red_g, red_b)
                     );
                     println!("    → Check your network connection");
-                    println!("    → Verify you can reach api.minimax.io");
+                    println!("    → Verify you can reach api.axiom.io");
                 } else if error_msg.contains("certificate") || error_msg.contains("SSL") {
                     println!(
                         "    {}",
@@ -1536,7 +1527,7 @@ async fn run_doctor() {
                         "✗ Connection refused".truecolor(red_r, red_g, red_b)
                     );
                     println!("    → The API server may be down");
-                    println!("    → Check https://status.minimax.io for outages");
+                    println!("    → Check https://status.axiom.io for outages");
                     println!("    → Try again later");
                 } else if error_msg.contains("429") {
                     println!("    {}", "✗ Rate limited".truecolor(red_r, red_g, red_b));
@@ -1558,16 +1549,16 @@ async fn run_doctor() {
                         "→".truecolor(blue_r, blue_g, blue_b).bold()
                     );
                     println!("    → Run with -v for verbose logging");
-                    println!("    → Check https://github.com/Hmbown/MiniMax-CLI/issues");
+                    println!("    → Check https://github.com/Hmbown/Axiom-CLI/issues");
                 }
 
                 // Quick fix section
                 println!();
                 println!("    {}", "Quick fixes:".bold());
-                println!("    → export MINIMAX_API_KEY='your-key-here'");
+                println!("    → export AXIOM_API_KEY='your-key-here'");
                 println!(
                     "    → Run {} again to verify",
-                    "minimax doctor".truecolor(blue_r, blue_g, blue_b)
+                    "axiom doctor".truecolor(blue_r, blue_g, blue_b)
                 );
             }
         }
@@ -1579,13 +1570,13 @@ async fn run_doctor() {
         // Help users who don't have an API key
         println!();
         println!("    {}", "To get started:".bold());
-        println!("    1. Get an API key from https://platform.minimax.io");
+        println!("    1. Get an API key from https://platform.axiom.io");
         println!("    2. Either:");
-        println!("       → Set environment variable: export MINIMAX_API_KEY='your-key'");
-        println!("       → Or create config: ~/.minimax/config.toml");
+        println!("       → Set environment variable: export AXIOM_API_KEY='your-key'");
+        println!("       → Or create config: ~/.axiom/config.toml");
         println!(
             "    3. Run {} to verify",
-            "minimax doctor".truecolor(blue_r, blue_g, blue_b)
+            "axiom doctor".truecolor(blue_r, blue_g, blue_b)
         );
     }
 
@@ -1728,10 +1719,10 @@ fn list_sessions(limit: usize, search: Option<String>) -> Result<()> {
     use colored::Colorize;
     use session_manager::{SessionManager, format_session_line};
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     let manager = SessionManager::default_location()?;
 
@@ -1748,7 +1739,7 @@ fn list_sessions(limit: usize, search: Option<String>) -> Result<()> {
         );
         println!(
             "Start a new session with: {}",
-            "minimax".truecolor(blue_r, blue_g, blue_b)
+            "axiom".truecolor(blue_r, blue_g, blue_b)
         );
         return Ok(());
     }
@@ -1781,12 +1772,12 @@ fn list_sessions(limit: usize, search: Option<String>) -> Result<()> {
     println!();
     println!(
         "Resume with: {} {}",
-        "minimax --resume".truecolor(blue_r, blue_g, blue_b),
+        "axiom --resume".truecolor(blue_r, blue_g, blue_b),
         "<session-id>".truecolor(muted_r, muted_g, muted_b)
     );
     println!(
         "Continue latest: {}",
-        "minimax --continue".truecolor(blue_r, blue_g, blue_b)
+        "axiom --continue".truecolor(blue_r, blue_g, blue_b)
     );
 
     Ok(())
@@ -1797,9 +1788,9 @@ fn init_project() -> Result<()> {
     use colored::Colorize;
     use project_context::create_default_agents_md;
 
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (red_r, red_g, red_b) = palette::RED_RGB;
 
     let workspace = std::env::current_dir()?;
     let agents_path = workspace.join("AGENTS.md");
@@ -1822,7 +1813,7 @@ fn init_project() -> Result<()> {
             );
             println!();
             println!("Edit this file to customize how the AI agent works with your project.");
-            println!("The instructions will be loaded automatically when you run minimax.");
+            println!("The instructions will be loaded automatically when you run axiom.");
         }
         Err(e) => {
             println!(
@@ -1887,7 +1878,7 @@ async fn run_review(config: &Config, args: ReviewArgs) -> Result<()> {
     let model = args
         .model
         .or_else(|| config.default_text_model.clone())
-        .unwrap_or_else(|| "MiniMax-M2.1".to_string());
+        .unwrap_or_else(|| "Axiom-model-01".to_string());
 
     let system = SystemPrompt::Text(
         "You are a senior code reviewer. Focus on bugs, risks, behavioral regressions, \
@@ -2055,8 +2046,8 @@ async fn run_exec_agent(config: &Config, model: &str, prompt: &str) -> Result<()
 fn run_setup(config: &Config, workspace: &std::path::Path, args: SetupCliArgs) -> Result<()> {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
 
     let mut run_mcp = args.mcp || args.all;
     let mut run_skills = args.skills || args.all;
@@ -2065,10 +2056,7 @@ fn run_setup(config: &Config, workspace: &std::path::Path, args: SetupCliArgs) -
         run_skills = true;
     }
 
-    println!(
-        "{}",
-        "MiniMax Setup".truecolor(blue_r, blue_g, blue_b).bold()
-    );
+    println!("{}", "Axiom Setup".truecolor(blue_r, blue_g, blue_b).bold());
     println!("{}", "=============".truecolor(blue_r, blue_g, blue_b));
     println!("Workspace: {}", workspace.display());
     println!();
@@ -2104,7 +2092,7 @@ fn run_setup(config: &Config, workspace: &std::path::Path, args: SetupCliArgs) -
         }
         println!(
             "    Next: edit the file, then run {}",
-            "minimax mcp list".truecolor(blue_r, blue_g, blue_b)
+            "axiom mcp list".truecolor(blue_r, blue_g, blue_b)
         );
     }
 
@@ -2154,10 +2142,10 @@ fn run_setup(config: &Config, workspace: &std::path::Path, args: SetupCliArgs) -
 fn run_mcp_command(config: &Config, cmd: McpCliCommand) -> Result<()> {
     use colored::Colorize;
 
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (red_r, red_g, red_b) = palette::RED_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     let mcp_path = config.mcp_config_path();
 
@@ -2222,7 +2210,7 @@ fn run_mcp_command(config: &Config, cmd: McpCliCommand) -> Result<()> {
                     if !mcp_path.exists() {
                         println!(
                             "  Run {} to create one.",
-                            "minimax mcp init".truecolor(blue_r, blue_g, blue_b)
+                            "axiom mcp init".truecolor(blue_r, blue_g, blue_b)
                         );
                     }
                 }

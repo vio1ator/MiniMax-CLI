@@ -1,15 +1,15 @@
 [package]
-name = "minimax-cli"
+name = "axiom-cli"
 version = "0.6.0"
 edition = "2024"
-description = "Unofficial MiniMax M2.1 CLI - Just run 'minimax' to start chatting"
+description = "Unofficial Axiom CLI - Just run 'axiom' to start chatting"
 license = "MIT"
 repository = "https://github.com/Hmbown/MiniMax-CLI"
-keywords = ["minimax", "cli", "ai", "agent", "llm"]
+keywords = ["axiom", "cli", "ai", "agent", "llm"]
 categories = ["command-line-utilities"]
 
 [[bin]]
-name = "minimax"
+name = "axiom"
 path = "src/main.rs"
 
 [dependencies]

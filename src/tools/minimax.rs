@@ -167,7 +167,7 @@ impl ToolSpec for TtsTool {
             .get("subtitle_enable")
             .and_then(serde_json::Value::as_bool);
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let output_dir = context.workspace.clone();
 
         let options = audio::T2aOptions {
@@ -281,7 +281,7 @@ impl ToolSpec for TtsAsyncCreateTool {
         let language_boost_json = optional_json_string(&input, "language_boost_json");
         let voice_modify_json = optional_json_string(&input, "voice_modify_json");
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = audio::T2aAsyncCreateOptions {
             model,
             text,
@@ -335,7 +335,7 @@ impl ToolSpec for TtsAsyncQueryTool {
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let task_id = required_str(&input, "task_id")?;
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = audio::T2aAsyncQueryOptions {
             task_id: task_id.to_string(),
         };
@@ -423,7 +423,7 @@ impl ToolSpec for AnalyzeImageTool {
             "max_tokens": max_tokens,
         });
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         match client.post_json("/v1/chat/completions", &request).await {
             Ok(response) => {
                 if let Some(text) = extract_chat_text(&response) {
@@ -621,7 +621,7 @@ impl ToolSpec for GenerateImageTool {
             .and_then(serde_json::Value::as_bool);
         let subject_reference = optional_string_vec(&input, "subject_reference");
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let output_dir = context.workspace.clone();
 
         let options = image::ImageGenerateOptions {
@@ -774,7 +774,7 @@ impl ToolSpec for GenerateVideoTool {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(true);
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let output_dir = context.workspace.clone();
 
         let options = video::VideoGenerateOptions {
@@ -876,7 +876,7 @@ impl ToolSpec for VideoTemplateCreateTool {
         let callback_url =
             optional_str(&input, "callback_url").map(std::string::ToString::to_string);
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = video::VideoAgentCreateOptions {
             template_id: template_id.to_string(),
             text_inputs,
@@ -925,7 +925,7 @@ impl ToolSpec for VideoTemplateQueryTool {
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let task_id = required_str(&input, "task_id")?;
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
 
         match video::agent_query(&client, task_id).await {
             Ok(response) => Ok(ToolResult::success(pretty_json(&response))),
@@ -971,7 +971,7 @@ impl ToolSpec for QueryVideoTool {
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let task_id = required_str(&input, "task_id")?;
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = video::VideoQueryOptions {
             task_id: task_id.to_string(),
         };
@@ -1056,7 +1056,7 @@ impl ToolSpec for GenerateMusicTool {
             .unwrap_or(false);
         let audio_setting_json = optional_json_string(&input, "audio_setting_json");
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let output_dir = context.workspace.clone();
 
         let options = music::MusicGenerateOptions {
@@ -1124,7 +1124,7 @@ impl ToolSpec for UploadFileTool {
 
         let path = context.resolve_path(path_str)?;
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = files::FileUploadOptions { path, purpose };
 
         match files::upload(&client, options).await {
@@ -1175,7 +1175,7 @@ impl ToolSpec for ListFilesTool {
             .unwrap_or("audio")
             .to_string();
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = files::FileListOptions { purpose };
 
         match files::list(&client, options).await {
@@ -1225,7 +1225,7 @@ impl ToolSpec for RetrieveFileTool {
         let file_id = required_str(&input, "file_id")?;
         let purpose = optional_str(&input, "purpose").map(std::string::ToString::to_string);
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = files::FileRetrieveOptions {
             file_id: file_id.to_string(),
             purpose,
@@ -1282,7 +1282,7 @@ impl ToolSpec for DownloadFileTool {
             None => None,
         };
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = files::FileRetrieveContentOptions {
             file_id: file_id.to_string(),
             output,
@@ -1337,7 +1337,7 @@ impl ToolSpec for DeleteFileTool {
         let file_id = required_str(&input, "file_id")?;
         let purpose = optional_str(&input, "purpose").map(std::string::ToString::to_string);
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = files::FileDeleteOptions {
             file_id: file_id.to_string(),
             purpose,
@@ -1438,7 +1438,7 @@ impl ToolSpec for VoiceCloneTool {
 
         let clone_audio = context.resolve_path(clone_audio_str)?;
 
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
 
         let options = audio::VoiceCloneOptions {
             clone_audio,
@@ -1492,7 +1492,7 @@ impl ToolSpec for VoiceListTool {
 
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let voice_type = optional_str(&input, "voice_type").map(std::string::ToString::to_string);
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = audio::VoiceListOptions { voice_type };
 
         match audio::voice_list(&client, options).await {
@@ -1539,7 +1539,7 @@ impl ToolSpec for VoiceDeleteTool {
     async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
         let voice_id = required_str(&input, "voice_id")?;
         let voice_type = optional_str(&input, "voice_type").map(std::string::ToString::to_string);
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = audio::VoiceDeleteOptions {
             voice_type,
             voice_id: voice_id.to_string(),
@@ -1594,7 +1594,7 @@ impl ToolSpec for VoiceDesignTool {
         let prompt = required_str(&input, "prompt")?;
         let preview_text = required_str(&input, "preview_text")?;
         let voice_id = optional_str(&input, "voice_id").map(std::string::ToString::to_string);
-        let client = create_minimax_client()?;
+        let client = create_axiom_client()?;
         let options = audio::VoiceDesignOptions {
             prompt: prompt.to_string(),
             preview_text: preview_text.to_string(),
@@ -1611,7 +1611,7 @@ impl ToolSpec for VoiceDesignTool {
 // === Helper function to create MiniMaxClient ===
 
 /// Create a `MiniMaxClient` from the default config.
-fn create_minimax_client() -> Result<MiniMaxClient, ToolError> {
+fn create_axiom_client() -> Result<MiniMaxClient, ToolError> {
     Config::load(None, None)
         .map_err(|e| ToolError::execution_failed(format!("Failed to load config: {e}")))
         .and_then(|config| {

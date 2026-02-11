@@ -195,7 +195,7 @@ pub fn render_tutorial(f: &mut ratatui::Frame, area: Rect, tutorial: &Tutorial) 
         Line::from(vec![Span::styled(
             step.title,
             Style::default()
-                .fg(palette::MINIMAX_BLUE)
+                .fg(palette::BLUE)
                 .bold()
                 .add_modifier(Modifier::UNDERLINED),
         )]),
@@ -214,8 +214,8 @@ pub fn render_tutorial(f: &mut ratatui::Frame, area: Rect, tutorial: &Tutorial) 
     if let Some(hint) = step.hint {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
-            Span::styled("💡 ", Style::default().fg(palette::MINIMAX_ORANGE)),
-            Span::styled(hint, Style::default().fg(palette::MINIMAX_ORANGE).italic()),
+            Span::styled("💡 ", Style::default().fg(palette::ORANGE)),
+            Span::styled(hint, Style::default().fg(palette::ORANGE).italic()),
         ]));
     }
 
@@ -258,7 +258,7 @@ pub fn render_tutorial(f: &mut ratatui::Frame, area: Rect, tutorial: &Tutorial) 
     } else {
         nav_spans.push(Span::styled(
             "[ (n)ext ]",
-            Style::default().fg(palette::MINIMAX_BLUE),
+            Style::default().fg(palette::BLUE),
         ));
     }
 
@@ -296,12 +296,12 @@ pub fn render_tutorial(f: &mut ratatui::Frame, area: Rect, tutorial: &Tutorial) 
                 .title(
                     Line::from(vec![Span::styled(
                         " Getting Started ",
-                        Style::default().fg(palette::MINIMAX_BLUE).bold(),
+                        Style::default().fg(palette::BLUE).bold(),
                     )])
                     .alignment(Alignment::Center),
                 )
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(palette::MINIMAX_BLUE)),
+                .border_style(Style::default().fg(palette::BLUE)),
         )
         .alignment(Alignment::Center);
 

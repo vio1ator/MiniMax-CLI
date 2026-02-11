@@ -108,18 +108,18 @@ impl<'a> HeaderWidget<'a> {
                 " SHELL ",
                 Style::default()
                     .fg(palette::TEXT_PRIMARY)
-                    .bg(palette::MINIMAX_GREEN)
+                    .bg(palette::GREEN)
                     .add_modifier(Modifier::BOLD),
             );
         }
 
         let (label, bg_color) = match self.data.mode {
-            AppMode::Normal => ("NORMAL", palette::MINIMAX_SLATE),
-            AppMode::Plan => ("PLAN", palette::MINIMAX_ORANGE),
-            AppMode::Agent => ("AGENT", palette::MINIMAX_BLUE),
+            AppMode::Normal => ("NORMAL", palette::SLATE),
+            AppMode::Plan => ("PLAN", palette::ORANGE),
+            AppMode::Agent => ("AGENT", palette::BLUE),
             AppMode::Yolo => ("YOLO", palette::STATUS_ERROR),
-            AppMode::Rlm => ("RLM", palette::MINIMAX_INK),
-            AppMode::Duo => ("DUO", palette::MINIMAX_MAGENTA),
+            AppMode::Rlm => ("RLM", palette::INK),
+            AppMode::Duo => ("DUO", palette::MAGENTA),
         };
 
         Span::styled(
@@ -183,15 +183,12 @@ impl<'a> HeaderWidget<'a> {
         }
 
         let mut spans = Vec::new();
-        spans.push(Span::styled(
-            "📌 ",
-            Style::default().fg(palette::MINIMAX_YELLOW),
-        ));
+        spans.push(Span::styled("📌 ", Style::default().fg(palette::YELLOW)));
 
         for (idx, pin) in self.data.pins.iter().enumerate() {
             let source_color = match pin.source {
-                crate::tui::app::PinSource::User => palette::MINIMAX_ORANGE,
-                crate::tui::app::PinSource::Assistant => palette::MINIMAX_BLUE,
+                crate::tui::app::PinSource::User => palette::ORANGE,
+                crate::tui::app::PinSource::Assistant => palette::BLUE,
             };
             let source_label = match pin.source {
                 crate::tui::app::PinSource::User => "You",
@@ -331,7 +328,7 @@ mod tests {
             context_used: 64_000,
             context_max: Some(128_000),
             is_streaming: false,
-            background: palette::MINIMAX_INK,
+            background: palette::INK,
             shell_mode: false,
             pins: Vec::new(),
             custom_context_windows: custom_windows,
@@ -349,7 +346,7 @@ mod tests {
             context_used: 0,
             context_max: Some(128_000),
             is_streaming: false,
-            background: palette::MINIMAX_INK,
+            background: palette::INK,
             shell_mode: false,
             pins: Vec::new(),
             custom_context_windows: custom_windows,
@@ -367,7 +364,7 @@ mod tests {
             context_used: 1000,
             context_max: None,
             is_streaming: false,
-            background: palette::MINIMAX_INK,
+            background: palette::INK,
             shell_mode: false,
             pins: Vec::new(),
             custom_context_windows: custom_windows,

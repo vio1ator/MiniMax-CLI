@@ -36,28 +36,25 @@ impl DuoView {
         match phase {
             DuoPhase::Init => (
                 "Initializing".to_string(),
-                Style::default().fg(palette::MINIMAX_ORANGE),
+                Style::default().fg(palette::ORANGE),
             ),
             DuoPhase::Player => (
                 "Player (Implementing)".to_string(),
                 Style::default()
-                    .fg(palette::MINIMAX_BLUE)
+                    .fg(palette::BLUE)
                     .add_modifier(Modifier::BOLD),
             ),
             DuoPhase::Coach => (
                 "Coach (Validating)".to_string(),
                 Style::default()
-                    .fg(palette::MINIMAX_MAGENTA)
+                    .fg(palette::MAGENTA)
                     .add_modifier(Modifier::BOLD),
             ),
             DuoPhase::Approved => (
                 "Approved ✓".to_string(),
-                Style::default().fg(palette::MINIMAX_GREEN),
+                Style::default().fg(palette::GREEN),
             ),
-            DuoPhase::Timeout => (
-                "Timeout ✗".to_string(),
-                Style::default().fg(palette::MINIMAX_RED),
-            ),
+            DuoPhase::Timeout => ("Timeout ✗".to_string(), Style::default().fg(palette::RED)),
         }
     }
 
@@ -102,11 +99,11 @@ impl DuoView {
         buf: &mut Buffer,
         state: &crate::duo::DuoState,
     ) {
-        let player_color = palette::MINIMAX_BLUE;
-        let coach_color = palette::MINIMAX_MAGENTA;
-        let active_color = palette::MINIMAX_ORANGE;
-        let approved_color = palette::MINIMAX_GREEN;
-        let timeout_color = palette::MINIMAX_RED;
+        let player_color = palette::BLUE;
+        let coach_color = palette::MAGENTA;
+        let active_color = palette::ORANGE;
+        let approved_color = palette::GREEN;
+        let timeout_color = palette::RED;
 
         let (_current_phase_label, _current_phase_color) = match state.phase {
             DuoPhase::Init => ("●", active_color),
@@ -161,7 +158,7 @@ impl DuoView {
         let mut loop_lines = vec![
             Line::from(Span::styled(
                 "Loop Progress",
-                Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+                Style::default().fg(palette::ORANGE).bold(),
             )),
             Line::from(""),
             Line::from(Span::styled(
@@ -208,7 +205,7 @@ impl DuoView {
         let mut header_lines = vec![
             Line::from(Span::styled(
                 "Duo Session Status",
-                Style::default().fg(palette::MINIMAX_BLUE).bold(),
+                Style::default().fg(palette::BLUE).bold(),
             )),
             Line::from(""),
             Line::from(vec![
@@ -225,7 +222,7 @@ impl DuoView {
             header_lines.push(Line::from(""));
             header_lines.push(Line::from(vec![
                 Span::styled("Quality: ", Style::default().fg(palette::TEXT_MUTED)),
-                Span::styled(quality_bar, Style::default().fg(palette::MINIMAX_ORANGE)),
+                Span::styled(quality_bar, Style::default().fg(palette::ORANGE)),
             ]));
         }
 
@@ -247,7 +244,7 @@ impl DuoView {
         let mut lines: Vec<Line> = vec![
             Line::from(Span::styled(
                 "Feedback History",
-                Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+                Style::default().fg(palette::ORANGE).bold(),
             )),
             Line::from(""),
         ];
@@ -273,7 +270,7 @@ impl DuoView {
                     Span::styled("Quality: ", Style::default().fg(palette::TEXT_MUTED)),
                     Span::styled(
                         format!("{:.0}%", score * 100.0),
-                        Style::default().fg(palette::MINIMAX_GREEN),
+                        Style::default().fg(palette::GREEN),
                     ),
                 ]));
             }
@@ -296,16 +293,16 @@ impl DuoView {
     fn render_status_line(&self, area: Rect, buf: &mut Buffer, state: &crate::duo::DuoState) {
         let status_text = match state.status {
             crate::duo::DuoStatus::Active => {
-                Span::styled("Active", Style::default().fg(palette::MINIMAX_BLUE))
+                Span::styled("Active", Style::default().fg(palette::BLUE))
             }
             crate::duo::DuoStatus::Approved => {
-                Span::styled("✓ Approved", Style::default().fg(palette::MINIMAX_GREEN))
+                Span::styled("✓ Approved", Style::default().fg(palette::GREEN))
             }
             crate::duo::DuoStatus::Rejected => {
-                Span::styled("✗ Rejected", Style::default().fg(palette::MINIMAX_RED))
+                Span::styled("✗ Rejected", Style::default().fg(palette::RED))
             }
             crate::duo::DuoStatus::Timeout => {
-                Span::styled("⏰ Timeout", Style::default().fg(palette::MINIMAX_ORANGE))
+                Span::styled("⏰ Timeout", Style::default().fg(palette::ORANGE))
             }
         };
 
@@ -403,7 +400,7 @@ impl ModalView for DuoView {
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(palette::MINIMAX_ORANGE)),
+                .border_style(Style::default().fg(palette::ORANGE)),
         );
 
         footer.render(popup_area, buf);

@@ -694,7 +694,7 @@ impl Engine {
             .with_search_tools()
             .with_todo_tool(todo_list.clone())
             .with_plan_tool(plan_state.clone())
-            .with_minimax_tools()
+            .with_axiom_tools()
             .with_git_tools()
             .with_artifact_tools()
             .with_execution_tools()

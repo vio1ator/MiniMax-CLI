@@ -97,7 +97,7 @@ Anthropic-compatible request/response format provided by MiniMax.
 - **`duo.rs`** - State machine, workflow execution, and session persistence
   - `DuoPhase`, `DuoStatus`, `DuoState` - Core state types
   - `run_duo_workflow()` - Player-coach loop with LLM API integration
-  - `save_session()`, `load_session()`, `list_sessions()`, `delete_session()` - Session persistence to `~/.minimax/sessions/duo/`
+  - `save_session()`, `load_session()`, `list_sessions()`, `delete_session()` - Session persistence to `~/.axiom/sessions/duo/`
   - File I/O helpers: `read_file()`, `write_file()`, `list_files()`, `validate_path()`
 - **`tools/duo.rs`** - Tool definitions (`duo_init`, `duo_player`, `duo_coach`, `duo_advance`, `duo_status`)
 
@@ -171,7 +171,7 @@ Anthropic-compatible request/response format provided by MiniMax.
 
 ### Adding an MCP Server
 
-1. Configure in `~/.minimax/mcp.json`
+1. Configure in `~/.axiom/mcp.json`
 2. Server auto-discovered at startup
 3. Tools exposed to LLM automatically
 
@@ -179,11 +179,11 @@ Anthropic-compatible request/response format provided by MiniMax.
 
 1. Create skill directory with `SKILL.md`
 2. Define skill prompt and optional scripts
-3. Place in `~/.minimax/skills/`
+3. Place in `~/.axiom/skills/`
 
 ### Adding Hooks
 
-Configure in `~/.minimax/config.toml`:
+Configure in `~/.axiom/config.toml`:
 
 ```toml
 [[hooks]]
@@ -201,8 +201,8 @@ command = "echo 'Running tool: $TOOL_NAME'"
 
 ## Configuration Files
 
-- `~/.minimax/config.toml` - Main configuration
-- `~/.minimax/mcp.json` - MCP server configuration
-- `~/.minimax/skills/` - User skills directory
-- `~/.minimax/sessions/` - Session history
-- `~/.minimax/sessions/duo/` - Duo mode session persistence
+- `~/.axiom/config.toml` - Main configuration
+- `~/.axiom/mcp.json` - MCP server configuration
+- `~/.axiom/skills/` - User skills directory
+- `~/.axiom/sessions/` - Session history
+- `~/.axiom/sessions/duo/` - Duo mode session persistence

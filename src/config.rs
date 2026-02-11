@@ -1,4 +1,4 @@
-//! Configuration loading and defaults for minimax-cli.
+//! Configuration loading and defaults for axiom-cli.
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -171,11 +171,11 @@ impl Config {
 
     /// Return the `MiniMax` base URL (normalized).
     #[must_use]
-    pub fn minimax_base_url(&self) -> String {
+    pub fn axiom_base_url(&self) -> String {
         let base = self
             .base_url
             .clone()
-            .unwrap_or_else(|| "https://api.minimax.io".to_string());
+            .unwrap_or_else(|| "https://api.axiom.io".to_string());
         normalize_base_url(&base)
     }
 
@@ -186,11 +186,11 @@ impl Config {
             &self
                 .base_url
                 .clone()
-                .unwrap_or_else(|| "https://api.minimax.io".to_string()),
+                .unwrap_or_else(|| "https://api.axiom.io".to_string()),
         );
-        let minimax_domains = ["api.minimax.io", "api.minimaxi.com"];
-        let is_minimax = minimax_domains.iter().any(|domain| root.contains(domain));
-        if is_minimax {
+        let axiom_domains = ["api.axiom.io", "api.axiomi.com"];
+        let is_axiom = axiom_domains.iter().any(|domain| root.contains(domain));
+        if is_axiom {
             format!("{}/anthropic", root.trim_end_matches('/'))
         } else {
             root.trim_end_matches('/').to_string()
@@ -205,7 +205,7 @@ impl Config {
         let base = self
             .base_url_2
             .clone()
-            .unwrap_or_else(|| "https://api.minimax.io".to_string());
+            .unwrap_or_else(|| "https://api.axiom.io".to_string());
         normalize_base_url(&base)
     }
 
@@ -220,7 +220,7 @@ impl Config {
         // Fall back to primary API key
         self.api_key
             .clone()
-            .context("Failed to load MiniMax API key: MINIMAX_API_KEY or MINIMAX_API_KEY_2 missing. Set it in config.toml or environment.")
+            .context("Failed to load MiniMax API key: AXIOM_API_KEY or AXIOM_API_KEY_2 missing. Set it in config.toml or environment.")
     }
 
     /// Return the default coding model, or fall back to text model if not set.
@@ -254,23 +254,23 @@ impl Config {
             )
         } else {
             (
-                self.minimax_api_key().unwrap_or_default(),
-                self.minimax_base_url(),
+                self.axiom_api_key().unwrap_or_default(),
+                self.axiom_base_url(),
             )
         }
     }
 
     /// Read the `MiniMax` API key from config/environment.
-    pub fn minimax_api_key(&self) -> Result<String> {
+    pub fn axiom_api_key(&self) -> Result<String> {
         self.api_key
             .clone()
             .context(
-                "Failed to load MiniMax API key: MINIMAX_API_KEY missing. Set it in config.toml or environment.",
+                "Failed to load MiniMax API key: AXIOM_API_KEY missing. Set it in config.toml or environment.",
             )
     }
 
     pub fn anthropic_api_key(&self) -> Result<String> {
-        self.minimax_api_key()
+        self.axiom_api_key()
     }
 
     /// Resolve enabled features from defaults and config entries.
@@ -378,7 +378,7 @@ impl Config {
             max_search_results: Some(100),
             default_chunk_size: Some(2_000),
             default_overlap: Some(200),
-            session_dir: Some("~/.minimax/rlm".to_string()),
+            session_dir: Some("~/.axiom/rlm".to_string()),
         };
 
         let Some(cfg) = &self.rlm else {
@@ -404,8 +404,8 @@ impl Config {
             .map(expand_path)
             .unwrap_or_else(|| {
                 dirs::home_dir()
-                    .map(|home| home.join(".minimax").join("rlm"))
-                    .unwrap_or_else(|| PathBuf::from(".minimax/rlm"))
+                    .map(|home| home.join(".axiom").join("rlm"))
+                    .unwrap_or_else(|| PathBuf::from(".axiom/rlm"))
             })
     }
 
@@ -518,12 +518,12 @@ impl Config {
 // === Defaults ===
 
 fn default_config_path() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("MINIMAX_CONFIG_PATH")
+    if let Ok(path) = std::env::var("AXIOM_CONFIG_PATH")
         && !path.trim().is_empty()
     {
         return Some(PathBuf::from(path));
     }
-    dirs::home_dir().map(|home| home.join(".minimax").join("config.toml"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("config.toml"))
 }
 
 fn expand_path(path: &str) -> PathBuf {
@@ -532,74 +532,71 @@ fn expand_path(path: &str) -> PathBuf {
 }
 
 fn default_skills_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".minimax").join("skills"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("skills"))
 }
 
 fn default_mcp_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".minimax").join("mcp.json"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("mcp.json"))
 }
 
 fn default_notes_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".minimax").join("notes.txt"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("notes.txt"))
 }
 
 fn default_memory_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".minimax").join("memory.md"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("memory.md"))
 }
 
 // === Environment Overrides ===
 
 fn apply_env_overrides(config: &mut Config) {
-    if let Ok(value) = std::env::var("MINIMAX_API_KEY") {
+    if let Ok(value) = std::env::var("AXIOM_API_KEY") {
         config.api_key = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_API_KEY_2") {
+    if let Ok(value) = std::env::var("AXIOM_API_KEY_2") {
         config.api_key_2 = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_BASE_URL") {
+    if let Ok(value) = std::env::var("AXIOM_BASE_URL") {
         config.base_url = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_BASE_URL_2") {
+    if let Ok(value) = std::env::var("AXIOM_BASE_URL_2") {
         config.base_url_2 = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_DEFAULT_CODING_MODEL") {
+    if let Ok(value) = std::env::var("AXIOM_DEFAULT_CODING_MODEL") {
         config.default_coding_model = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_OUTPUT_DIR") {
+    if let Ok(value) = std::env::var("AXIOM_OUTPUT_DIR") {
         config.output_dir = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_SKILLS_DIR") {
+    if let Ok(value) = std::env::var("AXIOM_SKILLS_DIR") {
         config.skills_dir = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_MCP_CONFIG") {
+    if let Ok(value) = std::env::var("AXIOM_MCP_CONFIG") {
         config.mcp_config_path = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_NOTES_PATH") {
+    if let Ok(value) = std::env::var("AXIOM_NOTES_PATH") {
         config.notes_path = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_MEMORY_PATH") {
+    if let Ok(value) = std::env::var("AXIOM_MEMORY_PATH") {
         config.memory_path = Some(value);
     }
-    if let Ok(value) = std::env::var("MINIMAX_ALLOW_SHELL") {
+    if let Ok(value) = std::env::var("AXIOM_ALLOW_SHELL") {
         config.allow_shell = Some(value == "1" || value.eq_ignore_ascii_case("true"));
     }
-    if let Ok(value) = std::env::var("MINIMAX_MAX_SUBAGENTS")
+    if let Ok(value) = std::env::var("AXIOM_MAX_SUBAGENTS")
         && let Ok(parsed) = value.parse::<usize>()
     {
         config.max_subagents = Some(parsed.clamp(1, 5));
     }
-    if let Ok(value) = std::env::var("MINIMAX_MODEL_CONTEXT_WINDOWS") {
+    if let Ok(value) = std::env::var("AXIOM_MODEL_CONTEXT_WINDOWS") {
         config.model_context_windows_raw = Some(parse_model_context_windows(&value));
     }
 }
 
 fn normalize_base_url(base: &str) -> String {
     let trimmed = base.trim_end_matches('/');
-    let minimax_domains = ["api.minimax.io", "api.minimaxi.com"];
-    if minimax_domains
-        .iter()
-        .any(|domain| trimmed.contains(domain))
-    {
+    let axiom_domains = ["api.axiom.io", "api.axiomi.com"];
+    if axiom_domains.iter().any(|domain| trimmed.contains(domain)) {
         return trimmed
             .trim_end_matches("/anthropic")
             .trim_end_matches("/v1")
@@ -748,12 +745,12 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
         // Create new minimal config
         format!(
             r#"# MiniMax CLI Configuration
-# Get your API key from https://platform.minimax.io
+# Get your API key from https://platform.axiom.io
 
 api_key = "{api_key}"
 
-# Base URL (default: https://api.minimax.io)
-# base_url = "https://api.minimax.io"
+# Base URL (default: https://api.axiom.io)
+# base_url = "https://api.axiom.io"
 
 # Default model
 default_text_model = "MiniMax-M2.1"
@@ -810,27 +807,27 @@ mod tests {
     struct EnvGuard {
         home: Option<OsString>,
         userprofile: Option<OsString>,
-        minimax_config_path: Option<OsString>,
+        axiom_config_path: Option<OsString>,
     }
 
     impl EnvGuard {
         fn new(home: &Path) -> Self {
             let home_str = OsString::from(home.as_os_str());
-            let config_path = home.join(".minimax").join("config.toml");
+            let config_path = home.join(".axiom").join("config.toml");
             let config_str = OsString::from(config_path.as_os_str());
             let home_prev = env::var_os("HOME");
             let userprofile_prev = env::var_os("USERPROFILE");
-            let minimax_config_prev = env::var_os("MINIMAX_CONFIG_PATH");
+            let axiom_config_prev = env::var_os("AXIOM_CONFIG_PATH");
             // Safety: test-only environment mutation guarded by a global mutex.
             unsafe {
                 env::set_var("HOME", &home_str);
                 env::set_var("USERPROFILE", &home_str);
-                env::set_var("MINIMAX_CONFIG_PATH", &config_str);
+                env::set_var("AXIOM_CONFIG_PATH", &config_str);
             }
             Self {
                 home: home_prev,
                 userprofile: userprofile_prev,
-                minimax_config_path: minimax_config_prev,
+                axiom_config_path: axiom_config_prev,
             }
         }
     }
@@ -859,15 +856,15 @@ mod tests {
                     env::remove_var("USERPROFILE");
                 }
             }
-            if let Some(value) = self.minimax_config_path.take() {
+            if let Some(value) = self.axiom_config_path.take() {
                 // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
-                    env::set_var("MINIMAX_CONFIG_PATH", value);
+                    env::set_var("AXIOM_CONFIG_PATH", value);
                 }
             } else {
                 // Safety: test-only environment mutation guarded by a global mutex.
                 unsafe {
-                    env::remove_var("MINIMAX_CONFIG_PATH");
+                    env::remove_var("AXIOM_CONFIG_PATH");
                 }
             }
         }
@@ -886,12 +883,12 @@ mod tests {
             .unwrap()
             .as_nanos();
         let temp_root =
-            env::temp_dir().join(format!("minimax-cli-test-{}-{}", std::process::id(), nanos));
+            env::temp_dir().join(format!("axiom-cli-test-{}-{}", std::process::id(), nanos));
         fs::create_dir_all(&temp_root)?;
         let _guard = EnvGuard::new(&temp_root);
 
         let path = save_api_key("test-key")?;
-        let expected = temp_root.join(".minimax").join("config.toml");
+        let expected = temp_root.join(".axiom").join("config.toml");
         assert_eq!(path, expected);
 
         let contents = fs::read_to_string(&path)?;
@@ -907,7 +904,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let temp_root = env::temp_dir().join(format!(
-            "minimax-cli-tilde-test-{}-{}",
+            "axiom-cli-tilde-test-{}-{}",
             std::process::id(),
             nanos
         ));
@@ -915,11 +912,11 @@ mod tests {
         let _guard = EnvGuard::new(&temp_root);
 
         let config = Config {
-            skills_dir: Some("~/.minimax/skills".to_string()),
+            skills_dir: Some("~/.axiom/skills".to_string()),
             ..Default::default()
         };
         let expected_home = dirs::home_dir().expect("home dir not found");
-        let expected_skills = expected_home.join(".minimax").join("skills");
+        let expected_skills = expected_home.join(".axiom").join("skills");
         let actual_skills = config.skills_dir();
         assert_eq!(
             actual_skills.components().collect::<Vec<_>>(),
@@ -977,14 +974,14 @@ mod tests {
             .unwrap()
             .as_nanos();
         let temp_root = env::temp_dir().join(format!(
-            "minimax-cli-api-key-test-{}-{}",
+            "axiom-cli-api-key-test-{}-{}",
             std::process::id(),
             nanos
         ));
         fs::create_dir_all(&temp_root)?;
         let _guard = EnvGuard::new(&temp_root);
 
-        let config_path = temp_root.join(".minimax").join("config.toml");
+        let config_path = temp_root.join(".axiom").join("config.toml");
         ensure_parent_dir(&config_path)?;
         fs::write(
             &config_path,

@@ -157,7 +157,7 @@ impl SystemResources {
 
     /// Print a human-readable resource summary.
     pub fn print_info(&self) {
-        let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+        let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
         println!(
             "{}",
             "System Resources".truecolor(blue_r, blue_g, blue_b).bold()
@@ -710,10 +710,10 @@ pub fn session_summary(session: &RlmSession) -> String {
 #[allow(dead_code)]
 pub fn handle_command(command: RlmCommand, _config: &Config) -> Result<()> {
     let mut session = RlmSession::default();
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     match command {
         RlmCommand::Load(args) => {
@@ -1087,10 +1087,10 @@ fn format_lines(ctx: &RlmContext, start_line: usize, end_line: Option<usize>) ->
 }
 
 fn run_repl(context_id: &str, initial_load: Option<&std::path::Path>) -> Result<()> {
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (red_r, red_g, red_b) = palette::RED_RGB;
 
     println!(
         "{}",
@@ -1206,7 +1206,7 @@ fn run_repl(context_id: &str, initial_load: Option<&std::path::Path>) -> Result<
 }
 
 fn print_repl_help() {
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
     println!(
         "{}",
         "RLM Sandbox Commands"
@@ -1236,7 +1236,7 @@ fn print_repl_help() {
 }
 
 fn print_status(session: &RlmSession) {
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
     println!(
         "{}",
         "Session Status".truecolor(blue_r, blue_g, blue_b).bold()

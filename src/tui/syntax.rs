@@ -61,12 +61,12 @@ enum TokenType {
 impl TokenType {
     fn style(&self) -> Style {
         match self {
-            TokenType::Keyword => Style::default().fg(palette::MINIMAX_BLUE),
-            TokenType::String => Style::default().fg(palette::MINIMAX_GREEN),
+            TokenType::Keyword => Style::default().fg(palette::BLUE),
+            TokenType::String => Style::default().fg(palette::GREEN),
             TokenType::Comment => Style::default().fg(palette::TEXT_DIM),
-            TokenType::Number => Style::default().fg(palette::MINIMAX_ORANGE),
-            TokenType::Function => Style::default().fg(palette::MINIMAX_YELLOW),
-            TokenType::Type => Style::default().fg(palette::MINIMAX_MAGENTA),
+            TokenType::Number => Style::default().fg(palette::ORANGE),
+            TokenType::Function => Style::default().fg(palette::YELLOW),
+            TokenType::Type => Style::default().fg(palette::MAGENTA),
             TokenType::Plain => Style::default().fg(palette::TEXT_PRIMARY),
         }
     }

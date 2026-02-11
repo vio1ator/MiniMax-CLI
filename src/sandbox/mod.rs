@@ -355,7 +355,7 @@ impl SandboxManager {
 
         // Add sandbox indicator to environment
         let mut env = spec.env.clone();
-        env.insert("MINIMAX_SANDBOX".to_string(), "seatbelt".to_string());
+        env.insert("AXIOM_SANDBOX".to_string(), "seatbelt".to_string());
 
         ExecEnv {
             command,
@@ -380,7 +380,7 @@ impl SandboxManager {
 
         // Add sandbox indicator to environment
         let mut env = spec.env.clone();
-        env.insert("MINIMAX_SANDBOX".to_string(), "landlock".to_string());
+        env.insert("AXIOM_SANDBOX".to_string(), "landlock".to_string());
 
         // Note: Full Landlock implementation would use a helper binary that:
         // 1. Sets up the Landlock ruleset based on policy

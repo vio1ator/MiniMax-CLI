@@ -182,10 +182,7 @@ impl Renderable for ComposerWidget<'_> {
                 "Type a message or /help for commands..."
             };
             lines.push(Line::from(vec![
-                Span::styled(
-                    self.prompt,
-                    Style::default().fg(palette::MINIMAX_BLUE).bold(),
-                ),
+                Span::styled(self.prompt, Style::default().fg(palette::BLUE).bold()),
                 Span::styled(
                     placeholder,
                     Style::default().fg(palette::TEXT_MUTED).italic(),
@@ -199,7 +196,7 @@ impl Renderable for ComposerWidget<'_> {
                     continuation.as_str()
                 };
                 lines.push(Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(palette::MINIMAX_BLUE).bold()),
+                    Span::styled(prefix, Style::default().fg(palette::BLUE).bold()),
                     Span::styled(line.clone(), Style::default().fg(palette::TEXT_PRIMARY)),
                 ]));
             }
@@ -281,7 +278,7 @@ impl Renderable for ApprovalWidget<'_> {
                 Span::styled(
                     &self.request.tool_name,
                     Style::default()
-                        .fg(palette::MINIMAX_BLUE)
+                        .fg(palette::BLUE)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -291,7 +288,7 @@ impl Renderable for ApprovalWidget<'_> {
             ToolCategory::Safe => ("Safe", palette::STATUS_SUCCESS),
             ToolCategory::FileWrite => ("File Write", palette::STATUS_WARNING),
             ToolCategory::Shell => ("Shell Command", palette::STATUS_ERROR),
-            ToolCategory::PaidMultimedia => ("Paid API", palette::MINIMAX_MAGENTA),
+            ToolCategory::PaidMultimedia => ("Paid API", palette::MAGENTA),
         };
         lines.push(Line::from(vec![
             Span::raw("  Type: "),
@@ -348,7 +345,7 @@ impl Renderable for ApprovalWidget<'_> {
             let is_selected = i == self.selected;
             let style = if is_selected {
                 Style::default()
-                    .fg(palette::MINIMAX_BLUE)
+                    .fg(palette::BLUE)
                     .add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()

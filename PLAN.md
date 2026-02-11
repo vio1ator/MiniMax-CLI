@@ -1,439 +1,364 @@
-# Comprehensive Test Plan for minimax-cli
+# Comprehensive Plan: Remove MiniMax Features & Rename to Axiom
 
-## Current State (as of v0.6.0)
+## Overview
 
-### Test Coverage
-- ✅ 1 test file: `tests/palette_audit.rs` (color palette validation)
-- ❌ No unit tests for core functionality
-- ❌ No integration tests for workflows
-- ❌ No API mocking in tests
+Replace all MiniMax-specific features with a generic abstraction layer, remove multimedia tools, and rename the project to **Axiom**.
 
-### Key Modules Without Tests
-- Config loading and parsing
-- Session state management
-- Core engine orchestration
-- All tool implementations
-- Feature flags
-- RLM context handling
-- Duo state machine (only 24 unit tests exist)
+## Scope
 
----
+### Keep (as requested)
+- ✅ **Duo mode** - Player-coach paradigm
+- ✅ **RLM mode** - Externalized context
+- ✅ **Tool infrastructure** - Registry, spec, approval system
+- ✅ **TUI** - Complete terminal interface
+- ✅ **File tools** - Read/write/patch
+- ✅ **Shell tools** - Command execution
+- ✅ **Git tools** - Version control
+- ✅ **Web search** - Public APIs
+- ✅ **MCP** - External tool servers
+- ✅ **Subagents** - Multi-agent orchestration
 
-## Testing Strategy
-
-### Approach: Integration-First with Unit Coverage
-
-1. **Start with integration tests** for critical workflows
-2. **Add unit tests** for individual functions/types
-3. **Use property-based testing** for state machines
-4. **Add API mocking** with wiremock for HTTP interactions
-
----
-
-## Test Structure
-
-```
-tests/
-├── common.rs                 # Test utilities (temp dirs, fixtures)
-├── config_tests.rs           # Config loading & parsing
-├── session_tests.rs          # Session state management
-├── engine_tests.rs           # Core engine orchestration
-├── features_tests.rs         # Feature flags
-├── workspace_tests.rs        # Path safety & sandboxing
-├── utils_tests.rs            # Helper functions
-├── palette_audit.rs          # Color audit (existing)
-├── tools/
-│   ├── file_tests.rs         # File operations
-│   ├── shell_tests.rs        # Shell execution
-│   ├── web_search_tests.rs   # Web tools
-│   ├── subagent_tests.rs     # Subagent tools
-│   ├── memory_tests.rs       # Memory tools
-│   └── ...
-├── state_machines/
-│   ├── duo_state_tests.rs    # Duo state machine
-│   └── rlm_context_tests.rs  # RLM context
-└── e2e_tests.rs              # End-to-end workflows
-```
+### Remove
+- ❌ All MiniMax API calls
+- ❌ TTS/Text-to-Speech
+- ❌ Image generation
+- ❌ Video generation
+- ❌ Music generation
+- ❌ Voice cloning
+- ❌ File upload/retrieve from MiniMax
 
 ---
 
-## Phase 1: Core Module Tests
+## Phase 1: Project Renaming & Branding
 
-### 1.1 Config Module (`tests/config_tests.rs`)
+### 1.1 Package & Binary
+- **Package name:** `minimax-cli` → `axiom-cli`
+- **Binary name:** `minimax` → `axiom`
+- **Config directory:** `~/.axiom/` → `~/.axiom/`
 
-**Coverage**:
-- Config loading from file
-- Config loading from environment variables
-- Profile selection
-- API key resolution
-- Default value application
-- Feature flag parsing
-- Retry policy calculation
+**Files to update:**
+- `Cargo.toml` - package name, binary name
+- `src/main.rs` - CLI name, help text
+- `README.md` - all references
+- `config.example.toml` - comments
+- `.github/workflows/*.yml` - CI/CD
 
-**Key Scenarios**:
+### 1.2 Environment Variables
+- `MINIMAX_API_KEY` → `AXIOM_API_KEY`
+- `MINIMAX_BASE_URL` → `AXIOM_BASE_URL`
+- `MINIMAX_API_KEY_2` → `AXIOM_API_KEY_2`
+- `MINIMAX_BASE_URL_2` → `AXIOM_BASE_URL_2`
+- `MINIMAX_PROFILE` → `AXIOM_PROFILE`
+- `MINIMAX_CONFIG_PATH` → `AXIOM_CONFIG_PATH`
+- `MINIMAX_MCP_CONFIG` → `AXIOM_MCP_CONFIG`
+- `MINIMAX_SKILLS_DIR` → `AXIOM_SKILLS_DIR`
+- `MINIMAX_NOTES_PATH` → `AXIOM_NOTES_PATH`
+- `MINIMAX_MEMORY_PATH` → `AXIOM_MEMORY_PATH`
+- `MINIMAX_ALLOW_SHELL` → `AXIOM_ALLOW_SHELL`
+- `MINIMAX_MAX_SUBAGENTS` → `AXIOM_MAX_SUBAGENTS`
+- `MINIMAX_MODEL_CONTEXT_WINDOWS` → `AXIOM_MODEL_CONTEXT_WINDOWS`
+
+---
+
+## Phase 2: Generic API Abstraction Layer
+
+### 2.1 Create Provider System
+**New file:** `src/provider.rs`
+
 ```rust
-// Test cases:
-- Missing config file → fallback to defaults
-- Invalid TOML → proper error
-- Environment variable overrides
-- Profile not found → error
-- Multiple profiles in one config
-```
-
----
-
-### 1.2 Session Module (`tests/session_tests.rs`)
-
-**Coverage**:
-- Session creation with/without project context
-- Message history management
-- Token usage tracking
-- Session persistence
-- Pinned messages
-- Project context loading
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- New session initialization
-- Adding messages to history
-- Usage aggregation
-- Project context from AGENTS.md
-- Empty workspace (no context)
-```
-
----
-
-### 1.3 Engine Module (`tests/engine_tests.rs`)
-
-**Coverage**:
-- Tool registry construction
-- Tool execution orchestration
-- Feature flag filtering
-- Approval workflows
-- Parallel tool execution
-- Context compaction triggers
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Registering tools
-- Looking up tools by name
-- Feature-gated tool visibility
-- Parallel vs sequential execution
-- Compaction thresholds
-```
-
----
-
-### 1.4 Feature Flags (`tests/features_tests.rs`)
-
-**Coverage**:
-- Feature activation/deactivation
-- Default feature set
-- Feature dependencies
-- Unknown feature keys
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Enabling/disabling features
-- Feature-dependent tool availability
-- Invalid feature names → graceful handling
-```
-
----
-
-## Phase 2: Tool Implementation Tests
-
-### 2.1 File Tools (`tests/tools/file_tests.rs`)
-
-**Coverage**:
-- `ReadFileTool`: valid files, missing files, path traversal prevention
-- `WriteFileTool`: valid writes, path validation, directory creation
-- `EditFileTool`: search/replace, no matches, empty search
-- `ListDirTool`: valid dirs, empty dirs, permissions
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Path traversal attacks → blocked
-- Workspace boundary enforcement
-- Non-existent files → errors
-- Empty content handling
-- Permission errors
-```
-
----
-
-### 2.2 Shell Tools (`tests/tools/shell_tests.rs`)
-
-**Coverage**:
-- `ExecShellTool`: successful commands, failed commands
-- Shell execution with/without approval
-- Timeout handling
-- Output capture
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Valid commands (echo, pwd)
-- Invalid commands (exit 1)
-- Shell execution disabled → blocked
-- Long-running commands → timeout
-```
-
----
-
-### 2.3 Web Search Tools (`tests/tools/web_search_tests.rs`)
-
-**Coverage**:
-- `WebSearchTool`: mock HTTP responses
-- `WebFetchTool`: HTML parsing
-- Rate limiting handling
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Successful search
-- No results
-- Network errors
-- HTML parsing edge cases
-```
-
----
-
-### 2.4 Subagent Tools (`tests/tools/subagent_tests.rs`)
-
-**Coverage**:
-- Subagent creation
-- Concurrency limits
-- Resource cleanup
-
----
-
-### 2.5 Memory Tools (`tests/tools/memory_tests.rs`)
-
-**Coverage**:
-- Save/retrieve memory entries
-- Memory persistence
-- Query filtering
-
----
-
-## Phase 3: State Machine Tests (Property-Based)
-
-### 3.1 Duo State Machine (`tests/state_machines/duo_state_tests.rs`)
-
-**Coverage**:
-- Phase transitions (Init → Player → Coach → Approved)
-- Invalid transitions rejected
-- Max turns reached (timeout)
-- Quality score calculation
-
-**Approach**: Use `proptest` for property-based testing
-
-**Key Properties**:
-```rust
-// Test properties:
-- Cannot advance from Approved/Timeout
-- Valid phase sequence enforcement
-- Turn counting accuracy
-- Quality score averaging
-- Session persistence roundtrip
-```
-
-**Example Tests**:
-```rust
-// Property: Valid phase sequence
-proptest! {
-    #[test]
-    fn valid_phase_sequence(state in duo_state_strategy()) {
-        // State machine should only allow valid transitions
-    }
-}
-
-// Property: Turn counting
-proptest! {
-    #[test]
-    fn turn_counting(state in duo_state_strategy()) {
-        // Turn counter must match history length
-    }
+// Generic trait for any LLM provider
+trait LlmProvider {
+    fn provider_name(&self) -> &'static str;
+    fn model(&self) -> &str;
+    fn create_message(&self, request: MessageRequest) -> Result<MessageResponse>;
+    fn create_message_stream(&self, request: MessageRequest) -> Result<StreamEventBox>;
 }
 ```
 
----
+### 2.2 Refactor Clients
+- **Keep:** `AnthropicClient` (already generic-compatible)
+- **Create:** `GenericProvider` for OpenAI/compatible APIs
+- **Remove:** `MiniMaxClient`, `MiniMaxCodingClient`
 
-### 3.2 RLM Context (`tests/state_machines/rlm_context_tests.rs`)
-
-**Coverage**:
-- Context loading from files
-- Search with regex
-- Chunking with overlap
-- Variable storage/retrieval
-
-**Key Scenarios**:
-```rust
-// Test cases:
-- Large file chunking
-- Regex search edge cases
-- Context overflow handling
-- Variable persistence
-```
+**Files to update:**
+- `src/client.rs` - Remove MiniMax-specific clients
+- `src/llm_client.rs` - Update trait bounds
+- `src/core/engine.rs` - Use provider abstraction
 
 ---
 
-## Phase 4: Integration Tests
+## Phase 3: Tool System Cleanup
 
-### 4.1 Workspace Safety (`tests/workspace_tests.rs`)
+### 3.1 Keep (Provider-Independent Tools)
+- `src/tools/file.rs` - Read/write/patch
+- `src/tools/shell.rs` - Command execution
+- `src/tools/git.rs` - Git operations
+- `src/tools/web_search.rs` - Web tools
+- `src/tools/memory.rs` - Memory management
+- `src/tools/artifact.rs` - Artifacts
+- `src/tools/plan.rs` - Plan management
+- `src/tools/todo.rs` - Todo list
+- `src/tools/subagent.rs` - Subagents
+- `src/tools/rlm.rs` - RLM operations
+- `src/tools/spec.rs` - Tool specification
 
-**Coverage**:
-- Path resolution within workspace
-- Absolute path rejection (outside workspace)
-- Trust mode bypass
-- File operations outside workspace → blocked
+### 3.2 Remove (MiniMax-Dependent Tools)
+**Delete entire file:** `src/tools/minimax.rs`
 
----
+**Tools to remove:**
+- `tts`, `tts_async_create`, `tts_async_query`
+- `generate_image`, `analyze_image`
+- `generate_video`, `query_video`, `generate_video_template`, `query_video_template`
+- `generate_music`
+- `upload_file`, `list_files`, `retrieve_file`, `download_file`, `delete_file`
+- `voice_clone`, `voice_list`, `voice_delete`, `voice_design`
 
-### 4.2 End-to-End Tests (`tests/e2e_tests.rs`)
+### 3.3 Update Tool Registry
+**File:** `src/tools/registry.rs`
+- Remove `with_minimax_tools()` method
+- Remove minimax tools from re-exports
+- Update documentation
 
-**Coverage**:
-- Full chat session (user prompt → AI response)
-- Tool execution workflow (AI → tool call → result)
-- Multi-turn conversations with context
-- Session resume from saved state
-
-**Note**: May need wiremock for API mocking
-
----
-
-## Test Infrastructure
-
-### Common Utilities (`tests/common.rs`)
-
-```rust
-// Available functions:
-- temp_workspace() → create temp directory for tests
-- mock_config() → create test config
-- fixture_path() → load test fixtures
-- assert_json_snapshot() → JSON comparison
-- test_client() → HTTP client for tests
-- write_test_file() → create test file
-- read_test_file() → read test file
-```
+**File:** `src/tools/mod.rs`
+- Remove `minimax` module from pub mod
+- Remove minimax tool re-exports
 
 ---
 
-## Implementation Schedule
+## Phase 4: Multimedia Module Cleanup
 
-### Week 1: Core Modules
-- [ ] Config tests
-- [ ] Session tests
-- [ ] Utils tests
-- [ ] Common utilities
+### 4.1 Remove Modules
+**Delete entire files:**
+- `src/modules/audio.rs`
+- `src/modules/video.rs`
+- `src/modules/image.rs`
+- `src/modules/music.rs`
+- `src/modules/files.rs` (if MiniMax-specific)
 
-### Week 2: Tool Tests
-- [ ] File tools tests
-- [ ] Shell tools tests
-- [ ] Web search tools tests
-- [ ] Subagent tests
+**Update:** `src/modules/mod.rs`
+- Remove removed modules from pub mod
 
-### Week 3: Feature Flags & Engine
-- [ ] Feature flags tests
-- [ ] Engine integration tests
-- [ ] Workspace safety tests
-
-### Week 4: State Machines
-- [ ] Duo state machine tests (property-based)
-- [ ] RLM context tests
-
-### Week 5: E2E & Coverage
-- [ ] End-to-end tests
-- [ ] Test coverage reporting
-- [ ] CI integration
+### 4.2 Update References
+- `src/tools/registry.rs` - Remove minimax tools
+- `src/llm_client.rs` - Remove any multimedia dependencies
 
 ---
 
-## Coverage Goals
+## Phase 5: Configuration Updates
 
-| Module | Target Coverage | Test Type |
-|--------|----------------|-----------|
-| Config | 90% | Integration |
-| Session | 85% | Integration |
-| Engine | 80% | Integration |
-| Tools | 85% | Unit + Integration |
-| Features | 95% | Unit |
-| Utils | 90% | Unit |
-| RLM/Duo | 75% | Property-based |
-| E2E | 70% | Integration |
+### 5.1 Remove MiniMax Defaults
+**File:** `src/config.rs`
+- Change `default_text_model` → `default_model`
+- Remove MiniMax-specific base_url defaults
+- Update `minimax_api_key()` → `api_key()`
+- Update `minimax_base_url()` → `base_url()`
+- Keep `coding_api_key()` and `coding_base_url()` for backwards compatibility
+- Update comments to remove MiniMax references
 
----
+**File:** `config.example.toml`
+- Replace `MiniMax-M2.1` with generic model names
+- Remove MiniMax-specific comments
+- Update API key comments
+- Update base_url comments
 
-## Tools & Dependencies
-
-### Existing Dev Dependencies
-- `pretty_assertions` - Better assertion messages
-- `wiremock` - HTTP server mocking
-
-### New Dependencies (to add)
-```toml
-[dev-dependencies]
-proptest = "1.0"          # Property-based testing
-tempfile = "3.16"         # Temp directory management
-insta = "1.0"             # Snapshot testing (optional)
-```
+### 5.2 Model Resolution
+- Default to first model in config file
+- Support multiple model configurations
+- No MiniMax-specific model logic
 
 ---
 
-## CI Integration
+## Phase 6: UI/Color Palette Updates
 
-### Add to `.github/workflows/ci.yml`
-```yaml
-test-coverage:
-  name: Test Coverage
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        toolchain: stable
-        components: llvm-tools-preview
-    - uses: Swatinem/rust-cache@v2
-    - name: Install cargo-llvm-cov
-      run: cargo install cargo-llvm-cov
-    - name: Generate coverage
-      run: cargo llvm-cov --all-features --html
-    - name: Upload coverage
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report
-        path: target/llvm-cov/html
-```
+### 6.1 Rename Palette Constants
+**File:** `src/palette.rs`
+- `MINIMAX_BLUE` → `BLUE`
+- `MINIMAX_RED` → `RED`
+- `MINIMAX_GREEN` → `GREEN`
+- `MINIMAX_YELLOW` → `YELLOW`
+- `MINIMAX_ORANGE` → `ORANGE`
+- `MINIMAX_MAGENTA` → `MAGENTA`
+- `MINIMAX_INK` → `INK`
+- `MINIMAX_BLACK` → `BLACK`
+- `MINIMAX_SLATE` → `SLATE`
+- `MINIMAX_SILVER` → `SILVER`
+- `MINIMAX_SNOW` → `SNOW`
+
+### 6.2 Update UI References
+**Files to update:**
+- `src/tui/widgets/header.rs` - Update all MINIMAX_ references
+- `src/tui/ui.rs` - Update colors, messages
+- `src/tui/app.rs` - Update welcome messages
+- `src/tui/model_picker.rs` - Update model descriptions
+- `src/tui/search_view.rs` - Update labels
+- `src/tui/tutorial.rs` - Update welcome text
+- `src/main.rs` - Update help text, colors
+
+**Change welcome messages:**
+- "Welcome to MiniMax" → "Welcome to Axiom"
+- "MiniMax M2.1" → "Model"
+- Remove MiniMax-specific instructions
 
 ---
 
-## Success Metrics
+## Phase 7: Documentation Updates
 
-### Minimum Viable Test Suite
-- ✅ 100+ unit/integration tests
-- ✅ Config, Session, Engine coverage
-- ✅ Core tools tested
-- ✅ Duo state machine property tests
-- ✅ CI pipeline passing
+### 7.1 README.md
+- Rename project to Axiom
+- Update all MiniMax references
+- Update installation instructions
+- Update configuration examples
+- Update model names
+- Update API key instructions
 
-### stretch Goals
-- 🎯 80%+ code coverage
-- 🎯 Property-based tests for state machines
-- 🎯 Snapshot testing for UI outputs
-- 🎯 E2E test suite
+### 7.2 Documentation Files
+**Files to update:**
+- `docs/README.md`
+- `docs/CONFIGURATION.md`
+- `docs/DUO.md`
+- `docs/RLM.md`
+- `docs/MODES.md`
+- `docs/ARCHITECTURE.md`
+- `docs/MCP.md`
+
+**Changes:**
+- Replace "MiniMax CLI" with "Axiom CLI"
+- Replace "MiniMax" with generic terms
+- Update example API keys
+- Update model examples
+
+### 7.3 Code Comments
+- Update all `//!` doc comments
+- Remove MiniMax-specific references
+- Update URLs
+
+---
+
+## Phase 8: Testing
+
+### 8.1 Add Test Infrastructure
+**New file:** `tests/common.rs`
+- Test utilities (temp dirs, fixtures)
+- Mock configuration
+- Workspace helpers
+
+### 8.2 Add Unit Tests
+**New files:**
+- `tests/config_tests.rs` - Config loading
+- `tests/session_tests.rs` - Session management
+- `tests/engine_tests.rs` - Engine orchestration
+- `tests/features_tests.rs` - Feature flags
+- `tests/tools/file_tests.rs` - File operations
+- `tests/tools/shell_tests.rs` - Shell execution
+- `tests/tools/git_tests.rs` - Git operations
+- `tests/tools/web_search_tests.rs` - Web tools
+- `tests/tools/memory_tests.rs` - Memory
+- `tests/tools/subagent_tests.rs` - Subagents
+- `tests/workspace_tests.rs` - Safety tests
+- `tests/state_machines/duo_state_tests.rs` - Property-based
+- `tests/state_machines/rlm_context_tests.rs` - Context tests
+
+### 8.3 Update CI
+**File:** `.github/workflows/ci.yml`
+- Add test-coverage job
+- Install llvm-cov
+- Generate HTML reports
+
+---
+
+## Implementation Order
+
+### Week 1: Core Refactoring
+- [ ] Phase 1: Package renaming
+- [ ] Phase 2: Provider abstraction
+- [ ] Phase 3: Remove minimax tools
+- [ ] Phase 4: Remove multimedia modules
+- [ ] Phase 5: Configuration updates
+
+### Week 2: UI Updates
+- [ ] Phase 6: Palette and UI updates
+- [ ] Phase 7: Documentation updates
+- [ ] Fix all broken imports
+- [ ] Build and fix compilation errors
+
+### Week 3: Testing
+- [ ] Phase 8: Add test infrastructure
+- [ ] Add unit tests for core modules
+- [ ] Add tool tests
+- [ ] Add state machine tests
+- [ ] Update CI pipeline
+
+### Week 4: Finalization
+- [ ] Update README and docs
+- [ ] Fix remaining issues
+- [ ] Run cargo clippy
+- [ ] Run cargo fmt
+- [ ] Test with sample configs
+- [ ] Create migration guide
+
+---
+
+## Verification Checklist
+
+### Build & Run
+- [ ] `cargo build` succeeds
+- [ ] `cargo test` passes (all new tests)
+- [ ] `cargo fmt` applied
+- [ ] `cargo clippy` has no warnings
+- [ ] Binary runs without MiniMax references
+
+### Functionality
+- [ ] Duo mode works
+- [ ] RLM mode works
+- [ ] File tools work
+- [ ] Shell tools work
+- [ ] Git tools work
+- [ ] Web search works
+- [ ] TUI renders correctly
+- [ ] Configuration loads
+- [ ] Session management works
+
+### No MiniMax Left Behind
+- [ ] No `MINIMAX_` environment variables
+- [ ] No `api.minimax.io` URLs
+- [ ] No `MiniMax` in code
+- [ ] No `minimax` in paths
+- [ ] No MiniMax-specific model names
+
+---
+
+## Breaking Changes
+
+### Configuration
+- `.minimax/config.toml` → `.axiom/config.toml`
+- Rename environment variables
+- Remove minimax-specific config keys
+
+### Tools
+- Remove: `tts`, `generate_image`, `generate_video`, `generate_music`, etc.
+- Tools must now use generic API providers
+
+### Models
+- Remove `MiniMax-M2.1`, `MiniMax-M2.1-Coding` defaults
+- Models must be configured explicitly
 
 ---
 
 ## Notes
 
-- Start with integration tests for critical paths
-- Add unit tests for complex logic
-- Use wiremock for API mocking
-- Property-based tests for state machines
-- Test workspace boundary security rigorously
-- Ensure all tools test approval workflows
+- Keep Duo and RLM modes provider-agnostic
+- Keep tool infrastructure working without MiniMax APIs
+- Use generic provider abstraction for future extensibility
+- Preserve all existing functionality except MiniMax-specific features
+- Update all documentation and examples
+
+---
+
+## Post-Migration Tasks
+
+1. **Deprecate MiniMax-specific features in README**
+2. **Create migration guide** for users
+3. **Update GitHub repository** description
+4. **Update crates.io** package metadata
+5. **Announce changes** in appropriate channels
+6. **Archive old documentation** for reference

@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║                         MiniMax CLI Configuration                            ║
+# ║                         Axiom CLI Configuration                            ║
 # ║                                                                              ║
 # ║  Unofficial CLI for MiniMax Platform - Not affiliated with MiniMax Inc.     ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
@@ -9,7 +9,7 @@
 # ─────────────────────────────────────────────────────────────────────────────────
 # API Keys
 # ─────────────────────────────────────────────────────────────────────────────────
-api_key = "YOUR_MINIMAX_API_KEY" # must be non-empty
+api_key = "YOUR_AXIOM_API_KEY" # must be non-empty
 # anthropic_api_key = "YOUR_ANTHROPIC_COMPAT_API_KEY"  # Not yet supported
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ base_url = "https://api.minimax.io" # US/global endpoint (default)
 # ─────────────────────────────────────────────────────────────────────────────────
 # Default Models
 # ─────────────────────────────────────────────────────────────────────────────────
-default_text_model = "MiniMax-M2.1"
+default_text_model = "model-01"
 
 # Parsed but currently unused (reserved for future versions):
 # default_image_model = "image-01"
@@ -33,14 +33,14 @@ default_text_model = "MiniMax-M2.1"
 # ─────────────────────────────────────────────────────────────────────────────────
 # Paths
 # ─────────────────────────────────────────────────────────────────────────────────
-skills_dir = "~/.minimax/skills"
-mcp_config_path = "~/.minimax/mcp.json"
-notes_path = "~/.minimax/notes.txt"
+skills_dir = "~/.axiom/skills"
+mcp_config_path = "~/.axiom/mcp.json"
+notes_path = "~/.axiom/notes.txt"
 
 # Parsed but currently unused (reserved for future versions):
 # output_dir = "./outputs"
 # tools_file = "./tools.json"
-# memory_path = "~/.minimax/memory.md"
+# memory_path = "~/.axiom/memory.md"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Security
@@ -77,7 +77,7 @@ exponential_base = 2.0
 # enabled = false                  # Enable auto-compaction
 # token_threshold = 50000          # Trigger compaction above this token estimate
 # message_threshold = 50           # Or above this message count
-# model = "MiniMax-M2.1"           # Model to use for summarization
+# model = "model-01"           # Model to use for summarization
 # cache_summary = true             # Cache the summary block
 
 # ─────────────────────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ max_context_chars = 10000000     # Max characters for context (10MB)
 max_search_results = 100         # Max search results
 default_chunk_size = 2000        # Default chunk size
 default_overlap = 200            # Default chunk overlap
-session_dir = "~/.minimax/rlm"   # Directory for RLM sessions
+session_dir = "~/.axiom/rlm"   # Directory for RLM sessions
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Duo Mode Configuration
@@ -106,7 +106,7 @@ player_temperature = 0.7         # Temperature for player implementation
 # Use a separate API key and endpoint for coding tasks
 # api_key_2 = "YOUR_CODING_API_KEY"           # Optional: separate coding API key
 # base_url_2 = "https://api.minimax.io"       # Optional: separate coding endpoint
-# default_coding_model = "MiniMax-M2.1-Coding" # Model for coding tasks
+# default_coding_model = "model-01-Coding" # Model for coding tasks
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profile Example (for multiple environments)
@@ -132,4 +132,4 @@ allow_shell = true
 #
 # [[hooks.hooks]]
 # event = "session_start"
-# command = "echo 'MiniMax CLI session started'"
+# command = "echo 'Axiom CLI session started'"

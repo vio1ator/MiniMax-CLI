@@ -170,7 +170,7 @@ pub async fn generate(
         };
         let path = output_path(&options.output_dir, &filename);
         write_bytes(&path, &bytes.0)?;
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
         saved_paths.push(path);
     }

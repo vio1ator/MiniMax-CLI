@@ -234,18 +234,18 @@ impl ModalView for HelpView {
         let mut help_lines: Vec<Line> = vec![
             Line::from(vec![Span::styled(
                 "MiniMax CLI Help",
-                Style::default().fg(palette::MINIMAX_BLUE).bold(),
+                Style::default().fg(palette::BLUE).bold(),
             )]),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Modes:",
-                Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+                Style::default().fg(palette::ORANGE).bold(),
             )]),
             Line::from("  Tab cycles modes: Normal → Plan → Agent → Yolo → RLM"),
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Commands:",
-                Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+                Style::default().fg(palette::ORANGE).bold(),
             )]),
         ];
 
@@ -259,7 +259,7 @@ impl ModalView for HelpView {
         help_lines.push(Line::from(""));
         help_lines.push(Line::from(vec![Span::styled(
             "Tools:",
-            Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+            Style::default().fg(palette::ORANGE).bold(),
         )]));
         help_lines.push(Line::from(
             "  web_search   - Search the web (DuckDuckGo; MCP optional)",
@@ -268,7 +268,7 @@ impl ModalView for HelpView {
         help_lines.push(Line::from(""));
         help_lines.push(Line::from(vec![Span::styled(
             "Keys:",
-            Style::default().fg(palette::MINIMAX_ORANGE).bold(),
+            Style::default().fg(palette::ORANGE).bold(),
         )]));
         help_lines.push(Line::from(
             "  Enter        - Send message / Execute shell command",
@@ -308,17 +308,14 @@ impl ModalView for HelpView {
                 Block::default()
                     .title(Line::from(vec![Span::styled(
                         " Help ",
-                        Style::default().fg(palette::MINIMAX_BLUE).bold(),
+                        Style::default().fg(palette::BLUE).bold(),
                     )]))
                     .title_bottom(Line::from(vec![
                         Span::styled(" Esc to close ", Style::default().fg(palette::TEXT_MUTED)),
-                        Span::styled(
-                            scroll_indicator,
-                            Style::default().fg(palette::MINIMAX_ORANGE),
-                        ),
+                        Span::styled(scroll_indicator, Style::default().fg(palette::ORANGE)),
                     ]))
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(palette::MINIMAX_ORANGE)),
+                    .border_style(Style::default().fg(palette::ORANGE)),
             )
             .scroll((scroll as u16, 0));
 

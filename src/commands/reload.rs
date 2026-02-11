@@ -7,8 +7,8 @@ use super::CommandResult;
 
 /// Reload configuration from disk
 pub fn reload(app: &mut App) -> CommandResult {
-    let profile = std::env::var("MINIMAX_PROFILE").ok();
-    let config_path = std::env::var("MINIMAX_CONFIG_PATH")
+    let profile = std::env::var("AXIOM_PROFILE").ok();
+    let config_path = std::env::var("AXIOM_CONFIG_PATH")
         .ok()
         .map(std::path::PathBuf::from);
 

@@ -1,6 +1,6 @@
 //! Quick Snippets System - Reusable text templates for common tasks
 //!
-//! Snippets are stored at ~/.minimax/snippets.toml and provide quick access
+//! Snippets are stored at ~/.axiom/snippets.toml and provide quick access
 //! to common prompt templates like code reviews, explanations, etc.
 
 use std::collections::HashMap;

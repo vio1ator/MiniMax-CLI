@@ -108,7 +108,7 @@ pub async fn generate(
     let task_id = extract_task_id(&response);
 
     if let Some(path) = download_video_if_available(client, &response, &options.output_dir).await? {
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
         return Ok(VideoGenerateResult {
             task_id,
@@ -166,7 +166,7 @@ pub async fn generate(
     }
 
     if let Some(path) = &video_path {
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
     }
 

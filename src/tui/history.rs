@@ -284,7 +284,7 @@ impl ExploringCell {
         lines.push(Line::from(Span::styled(
             header,
             Style::default()
-                .fg(palette::MINIMAX_BLUE)
+                .fg(palette::BLUE)
                 .add_modifier(Modifier::BOLD),
         )));
 
@@ -295,7 +295,7 @@ impl ExploringCell {
                 ToolStatus::Failed => "!!",
             };
             let style = match entry.status {
-                ToolStatus::Running => Style::default().fg(palette::MINIMAX_BLUE),
+                ToolStatus::Running => Style::default().fg(palette::BLUE),
                 ToolStatus::Success => Style::default().fg(palette::STATUS_SUCCESS),
                 ToolStatus::Failed => Style::default().fg(palette::STATUS_ERROR),
             };
@@ -339,7 +339,7 @@ impl PlanUpdateCell {
         lines.push(Line::from(Span::styled(
             header,
             Style::default()
-                .fg(palette::MINIMAX_MAGENTA)
+                .fg(palette::MAGENTA)
                 .add_modifier(Modifier::BOLD),
         )));
 
@@ -356,7 +356,7 @@ impl PlanUpdateCell {
             let line = format!("  {} {}", marker, step.step);
             lines.extend(wrap_plain_line(
                 &line,
-                Style::default().fg(palette::MINIMAX_MAGENTA),
+                Style::default().fg(palette::MAGENTA),
                 width,
             ));
         }
@@ -436,7 +436,7 @@ impl McpToolCell {
         let color = if self.status == ToolStatus::Failed {
             palette::STATUS_ERROR
         } else {
-            palette::MINIMAX_BLUE
+            palette::BLUE
         };
         lines.push(Line::from(Span::styled(
             header,
@@ -467,7 +467,7 @@ impl ViewImageCell {
     /// Render the image view cell into lines.
     pub fn lines(&self, width: u16) -> Vec<Line<'static>> {
         let header = format!("Viewed Image {}", self.path.display());
-        wrap_plain_line(&header, Style::default().fg(palette::MINIMAX_BLUE), width)
+        wrap_plain_line(&header, Style::default().fg(palette::BLUE), width)
     }
 }
 
@@ -490,7 +490,7 @@ impl WebSearchCell {
         lines.push(Line::from(Span::styled(
             header,
             Style::default()
-                .fg(palette::MINIMAX_BLUE)
+                .fg(palette::BLUE)
                 .add_modifier(Modifier::BOLD),
         )));
         lines.extend(wrap_plain_line(
@@ -530,7 +530,7 @@ impl GenericToolCell {
         let color = if self.status == ToolStatus::Failed {
             palette::STATUS_ERROR
         } else {
-            palette::MINIMAX_BLUE
+            palette::BLUE
         };
         lines.push(Line::from(Span::styled(
             header,
@@ -1234,11 +1234,11 @@ fn truncate_text(text: &str, max_len: usize) -> String {
 }
 
 fn user_style() -> Style {
-    Style::default().fg(palette::MINIMAX_ORANGE)
+    Style::default().fg(palette::ORANGE)
 }
 
 fn assistant_style() -> Style {
-    Style::default().fg(palette::MINIMAX_BLUE)
+    Style::default().fg(palette::BLUE)
 }
 
 fn system_style() -> Style {
@@ -1257,7 +1257,7 @@ fn error_style() -> Style {
 
 fn error_hint_style() -> Style {
     Style::default()
-        .fg(palette::MINIMAX_YELLOW)
+        .fg(palette::YELLOW)
         .add_modifier(Modifier::BOLD)
 }
 
@@ -1299,10 +1299,7 @@ fn render_error(message: &str, suggestion: Option<&str>, width: u16) -> Vec<Line
         lines.push(Line::from(vec![
             Span::styled(format!("{:prefix_width$}", ""), Style::default()),
             Span::styled("Try: ", error_hint_style()),
-            Span::styled(
-                hint.to_string(),
-                Style::default().fg(palette::MINIMAX_YELLOW),
-            ),
+            Span::styled(hint.to_string(), Style::default().fg(palette::YELLOW)),
         ]));
     }
 

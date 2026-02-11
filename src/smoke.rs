@@ -42,10 +42,10 @@ pub async fn run_smoke_media(
     config: &crate::config::Config,
     options: SmokeMediaOptions,
 ) -> Result<()> {
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     fs::create_dir_all(&options.output_dir).with_context(|| {
         format!(
@@ -251,7 +251,7 @@ fn validate_generated_file(path: &Path, expected: ValidationKind) -> Result<()> 
 }
 
 fn validate_file(path: &Path, expected: ValidationKind) -> Result<()> {
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
     let data =
         fs::read(path).with_context(|| format!("Failed to read output file {}", path.display()))?;
     if data.is_empty() {

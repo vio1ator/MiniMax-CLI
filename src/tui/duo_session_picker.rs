@@ -180,30 +180,24 @@ impl DuoSessionPicker {
 
     fn format_phase(&self, phase: DuoPhase) -> (String, Style) {
         match phase {
-            DuoPhase::Init => (
-                "Init".to_string(),
-                Style::default().fg(palette::MINIMAX_ORANGE),
-            ),
+            DuoPhase::Init => ("Init".to_string(), Style::default().fg(palette::ORANGE)),
             DuoPhase::Player => (
                 "Player".to_string(),
                 Style::default()
-                    .fg(palette::MINIMAX_BLUE)
+                    .fg(palette::BLUE)
                     .add_modifier(Modifier::BOLD),
             ),
             DuoPhase::Coach => (
                 "Coach".to_string(),
                 Style::default()
-                    .fg(palette::MINIMAX_MAGENTA)
+                    .fg(palette::MAGENTA)
                     .add_modifier(Modifier::BOLD),
             ),
             DuoPhase::Approved => (
                 "✓ Approved".to_string(),
-                Style::default().fg(palette::MINIMAX_GREEN),
+                Style::default().fg(palette::GREEN),
             ),
-            DuoPhase::Timeout => (
-                "✗ Timeout".to_string(),
-                Style::default().fg(palette::MINIMAX_RED),
-            ),
+            DuoPhase::Timeout => ("✗ Timeout".to_string(), Style::default().fg(palette::RED)),
         }
     }
 
@@ -230,12 +224,12 @@ impl DuoSessionPicker {
 
         let base_style = if is_selected {
             Style::default()
-                .bg(palette::MINIMAX_BLUE)
-                .fg(palette::MINIMAX_SNOW)
+                .bg(palette::BLUE)
+                .fg(palette::SNOW)
                 .add_modifier(Modifier::BOLD)
         } else if is_current {
             Style::default()
-                .fg(palette::MINIMAX_ORANGE)
+                .fg(palette::ORANGE)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_PRIMARY)
@@ -267,7 +261,7 @@ impl DuoSessionPicker {
         );
 
         let meta_style = if is_selected {
-            Style::default().fg(palette::MINIMAX_SILVER)
+            Style::default().fg(palette::SILVER)
         } else {
             Style::default().fg(palette::TEXT_DIM)
         };
@@ -276,7 +270,7 @@ impl DuoSessionPicker {
             current_indicator,
             if is_current {
                 Style::default()
-                    .fg(palette::MINIMAX_ORANGE)
+                    .fg(palette::ORANGE)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -288,9 +282,9 @@ impl DuoSessionPicker {
         title_line.push_span(Span::styled(
             status_icon,
             Style::default().fg(if is_selected {
-                palette::MINIMAX_SNOW
+                palette::SNOW
             } else {
-                palette::MINIMAX_GREEN
+                palette::GREEN
             }),
         ));
         title_line.push_span(Span::styled(" ", base_style));
@@ -308,9 +302,7 @@ impl DuoSessionPicker {
                 if idx < chars.len() {
                     title_line.push_span(Span::styled(
                         chars[idx].to_string(),
-                        base_style
-                            .add_modifier(Modifier::BOLD)
-                            .fg(palette::MINIMAX_YELLOW),
+                        base_style.add_modifier(Modifier::BOLD).fg(palette::YELLOW),
                     ));
                     last_idx = idx + 1;
                 }
@@ -329,7 +321,7 @@ impl DuoSessionPicker {
             title_line.push_span(Span::styled(
                 " (current)",
                 if is_selected {
-                    Style::default().fg(palette::MINIMAX_ORANGE)
+                    Style::default().fg(palette::ORANGE)
                 } else {
                     Style::default().fg(palette::TEXT_DIM)
                 },
@@ -414,7 +406,7 @@ impl ModalView for DuoSessionPicker {
         let block = Block::default()
             .title(" Duo Session Picker ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(palette::MINIMAX_BLUE));
+            .border_style(Style::default().fg(palette::BLUE));
         let inner = block.inner(popup_area);
         block.render(popup_area, buf);
 

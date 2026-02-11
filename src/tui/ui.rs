@@ -951,8 +951,8 @@ async fn run_event_loop(
                                     }
                                     AppAction::ReloadConfig => {
                                         // Reload configuration from disk
-                                        let profile = std::env::var("MINIMAX_PROFILE").ok();
-                                        let config_path = std::env::var("MINIMAX_CONFIG_PATH")
+                                        let profile = std::env::var("AXIOM_PROFILE").ok();
+                                        let config_path = std::env::var("AXIOM_CONFIG_PATH")
                                             .ok()
                                             .map(std::path::PathBuf::from);
 
@@ -2324,10 +2324,10 @@ fn render_status_indicator(f: &mut Frame, area: Rect, app: &App, queued: &[Strin
     if app.is_loading {
         let header = app.reasoning_header.clone();
         let elapsed = app.turn_started_at.map(format_elapsed);
-        let spinner = minimax_squiggle(app.turn_started_at);
-        let label = minimax_thinking_label(app.turn_started_at);
+        let spinner = axiom_squiggle(app.turn_started_at);
+        let label = axiom_thinking_label(app.turn_started_at);
         let mut spans = vec![
-            Span::styled(spinner, Style::default().fg(palette::MINIMAX_ORANGE).bold()),
+            Span::styled(spinner, Style::default().fg(palette::ORANGE).bold()),
             Span::raw(" "),
             Span::styled(label, Style::default().fg(palette::STATUS_WARNING).bold()),
         ];
@@ -2457,27 +2457,23 @@ fn duo_mode_indicator(app: &App) -> Option<(String, Style)> {
     let state = session.get_active()?;
 
     let (phase_icon, phase_name, phase_style) = match state.phase {
-        DuoPhase::Init => ("🎮", "Init", Style::default().fg(palette::MINIMAX_ORANGE)),
+        DuoPhase::Init => ("🎮", "Init", Style::default().fg(palette::ORANGE)),
         DuoPhase::Player => (
             "🎮",
             "Player",
             Style::default()
-                .fg(palette::MINIMAX_BLUE)
+                .fg(palette::BLUE)
                 .add_modifier(Modifier::BOLD),
         ),
         DuoPhase::Coach => (
             "🏆",
             "Coach",
             Style::default()
-                .fg(palette::MINIMAX_MAGENTA)
+                .fg(palette::MAGENTA)
                 .add_modifier(Modifier::BOLD),
         ),
-        DuoPhase::Approved => (
-            "✅",
-            "Approved",
-            Style::default().fg(palette::MINIMAX_GREEN),
-        ),
-        DuoPhase::Timeout => ("⏰", "Timeout", Style::default().fg(palette::MINIMAX_RED)),
+        DuoPhase::Approved => ("✅", "Approved", Style::default().fg(palette::GREEN)),
+        DuoPhase::Timeout => ("⏰", "Timeout", Style::default().fg(palette::RED)),
     };
 
     let approval_indicator =
@@ -2516,7 +2512,7 @@ fn render_footer(f: &mut Frame, area: Rect, app: &App) {
             let span = Span::styled(
                 format!("⚡ {}", process),
                 Style::default()
-                    .fg(palette::MINIMAX_BLUE)
+                    .fg(palette::BLUE)
                     .add_modifier(Modifier::BOLD),
             );
             push_footer_span(
@@ -2836,12 +2832,12 @@ fn rlm_usage_badge(app: &App) -> Option<(String, Style)> {
 
 fn mode_color(mode: AppMode) -> ratatui::style::Color {
     match mode {
-        AppMode::Normal => palette::MINIMAX_SLATE,
-        AppMode::Agent => palette::MINIMAX_BLUE,
+        AppMode::Normal => palette::SLATE,
+        AppMode::Agent => palette::BLUE,
         AppMode::Yolo => palette::STATUS_ERROR,
-        AppMode::Plan => palette::MINIMAX_ORANGE,
-        AppMode::Rlm => palette::MINIMAX_INK,
-        AppMode::Duo => palette::MINIMAX_MAGENTA,
+        AppMode::Plan => palette::ORANGE,
+        AppMode::Rlm => palette::INK,
+        AppMode::Duo => palette::MAGENTA,
     }
 }
 
@@ -2878,7 +2874,7 @@ fn format_elapsed(start: Instant) -> String {
     }
 }
 
-fn minimax_squiggle(start: Option<Instant>) -> &'static str {
+fn axiom_squiggle(start: Option<Instant>) -> &'static str {
     const FRAMES: [&str; 8] = [
         "MM~", "MM~~", "MM~~~", "MM~~~~", "MM~~~", "MM~~", "MM~", "MM.",
     ];
@@ -2887,7 +2883,7 @@ fn minimax_squiggle(start: Option<Instant>) -> &'static str {
     FRAMES[idx]
 }
 
-fn minimax_thinking_label(start: Option<Instant>) -> &'static str {
+fn axiom_thinking_label(start: Option<Instant>) -> &'static str {
     const TAGLINES: [&str; 5] = [
         "Thinking",
         "Plotting",
@@ -3203,7 +3199,7 @@ fn slice_text(text: &str, start: usize, end: usize) -> String {
 #[allow(clippy::too_many_lines)]
 fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
     // Clear the entire screen with a dark background
-    let block = Block::default().style(Style::default().bg(palette::MINIMAX_BLACK));
+    let block = Block::default().style(Style::default().bg(palette::BLACK));
     f.render_widget(block, area);
 
     // Center the content
@@ -3223,9 +3219,9 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             // Logo
             for (i, line) in LOGO.lines().enumerate() {
                 let color = match i % 3 {
-                    0 => palette::MINIMAX_BLUE,
-                    1 => palette::MINIMAX_MAGENTA,
-                    _ => palette::MINIMAX_ORANGE,
+                    0 => palette::BLUE,
+                    1 => palette::MAGENTA,
+                    _ => palette::ORANGE,
                 };
                 lines.push(Line::from(Span::styled(
                     line,
@@ -3236,10 +3232,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
                 Span::styled("Welcome to ", Style::default().fg(palette::TEXT_PRIMARY)),
-                Span::styled(
-                    "MiniMax CLI",
-                    Style::default().fg(palette::MINIMAX_BLUE).bold(),
-                ),
+                Span::styled("MiniMax CLI", Style::default().fg(palette::BLUE).bold()),
             ]));
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
@@ -3258,7 +3251,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             )));
             lines.push(Line::from(Span::styled(
                 "Get yours at: https://platform.minimax.io",
-                Style::default().fg(palette::MINIMAX_ORANGE),
+                Style::default().fg(palette::ORANGE),
             )));
             lines.push(Line::from(""));
             lines.push(Line::from(""));
@@ -3280,7 +3273,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(palette::MINIMAX_BLUE)),
+                        .border_style(Style::default().fg(palette::BLUE)),
                 )
                 .centered();
             f.render_widget(paragraph, content_area);
@@ -3289,7 +3282,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
             let mut lines = vec![
                 Line::from(Span::styled(
                     "Enter Your API Key",
-                    Style::default().fg(palette::MINIMAX_BLUE).bold(),
+                    Style::default().fg(palette::BLUE).bold(),
                 )),
                 Line::from(""),
                 Line::from(Span::styled(
@@ -3342,7 +3335,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(palette::MINIMAX_ORANGE)),
+                        .border_style(Style::default().fg(palette::ORANGE)),
                 )
                 .centered();
             f.render_widget(paragraph, content_area);
@@ -3359,8 +3352,8 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                     Style::default().fg(palette::TEXT_PRIMARY),
                 )),
                 Line::from(Span::styled(
-                    "~/.minimax/config.toml",
-                    Style::default().fg(palette::MINIMAX_ORANGE),
+                    "~/.axiom/config.toml",
+                    Style::default().fg(palette::ORANGE),
                 )),
                 Line::from(""),
                 Line::from(""),

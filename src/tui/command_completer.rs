@@ -381,7 +381,7 @@ pub fn render(f: &mut Frame, completer: &CommandCompleter, area: Rect) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(palette::MINIMAX_BLUE));
+        .border_style(Style::default().fg(palette::BLUE));
     f.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
@@ -398,8 +398,8 @@ pub fn render(f: &mut Frame, completer: &CommandCompleter, area: Rect) {
             // Base style
             let base_style = if is_selected {
                 Style::default()
-                    .bg(palette::MINIMAX_BLUE)
-                    .fg(palette::MINIMAX_BLACK)
+                    .bg(palette::BLUE)
+                    .fg(palette::BLACK)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(palette::TEXT_PRIMARY)
@@ -409,10 +409,7 @@ pub fn render(f: &mut Frame, completer: &CommandCompleter, area: Rect) {
 
             // Add "Did you mean?" indicator for typo corrections
             if m.suggestion_type == SuggestionType::TypoCorrection && !is_selected {
-                spans.push(Span::styled(
-                    "💡 ",
-                    Style::default().fg(palette::MINIMAX_ORANGE),
-                ));
+                spans.push(Span::styled("💡 ", Style::default().fg(palette::ORANGE)));
             }
 
             // Build the line with command name, aliases, and description
@@ -432,9 +429,9 @@ pub fn render(f: &mut Frame, completer: &CommandCompleter, area: Rect) {
                 spans.push(Span::styled(
                     format!(" {}", usage_example.split_whitespace().next().unwrap_or("")),
                     if is_selected {
-                        base_style.fg(palette::MINIMAX_SLATE)
+                        base_style.fg(palette::SLATE)
                     } else {
-                        base_style.fg(palette::MINIMAX_BLUE)
+                        base_style.fg(palette::BLUE)
                     },
                 ));
             }
@@ -444,7 +441,7 @@ pub fn render(f: &mut Frame, completer: &CommandCompleter, area: Rect) {
                 let alias_text = cmd.aliases.join(", ");
                 spans.push(Span::styled(
                     format!(" ({alias_text})"),
-                    base_style.fg(palette::MINIMAX_SLATE),
+                    base_style.fg(palette::SLATE),
                 ));
             }
 

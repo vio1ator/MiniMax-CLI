@@ -386,16 +386,16 @@ impl ModalView for SearchView {
         // Draw border and title
         Block::default()
             .title(" Search Transcript ")
-            .title_style(Style::default().fg(palette::MINIMAX_BLUE).bold())
+            .title_style(Style::default().fg(palette::BLUE).bold())
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(palette::MINIMAX_ORANGE))
+            .border_style(Style::default().fg(palette::ORANGE))
             .render(popup_area, buf);
 
         // Query input line
         let _query_line = format!("> {}", self.query);
         let query_style = Style::default().fg(palette::TEXT_PRIMARY);
         Paragraph::new(Line::from(vec![
-            Span::styled("> ", Style::default().fg(palette::MINIMAX_BLUE).bold()),
+            Span::styled("> ", Style::default().fg(palette::BLUE).bold()),
             Span::styled(&self.query, query_style),
         ]))
         .render(chunks[0], buf);
@@ -403,14 +403,14 @@ impl ModalView for SearchView {
         // Options bar
         let case_style = if self.case_sensitive() {
             Style::default()
-                .fg(palette::MINIMAX_GREEN)
+                .fg(palette::GREEN)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_MUTED)
         };
         let regex_style = if self.regex_mode() {
             Style::default()
-                .fg(palette::MINIMAX_GREEN)
+                .fg(palette::GREEN)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(palette::TEXT_MUTED)
@@ -435,9 +435,9 @@ impl ModalView for SearchView {
 
         // Footer with key hints
         let footer = Line::from(vec![
-            Span::styled("Esc", Style::default().fg(palette::MINIMAX_BLUE)),
+            Span::styled("Esc", Style::default().fg(palette::BLUE)),
             Span::styled(" close ", Style::default().fg(palette::TEXT_MUTED)),
-            Span::styled("↑↓", Style::default().fg(palette::MINIMAX_BLUE)),
+            Span::styled("↑↓", Style::default().fg(palette::BLUE)),
             Span::styled(" navigate", Style::default().fg(palette::TEXT_MUTED)),
         ]);
         Paragraph::new(footer).render(chunks[3], buf);
@@ -489,7 +489,7 @@ pub fn render_search_results(
     };
     lines.push(Line::from(vec![Span::styled(
         &counter_text,
-        Style::default().fg(palette::MINIMAX_YELLOW).bold(),
+        Style::default().fg(palette::YELLOW).bold(),
     )]));
     lines.push(Line::from(""));
 
@@ -499,8 +499,8 @@ pub fn render_search_results(
         let is_selected = Some(absolute_idx) == current_idx;
 
         let source_style = match result.source.as_str() {
-            "You" => Style::default().fg(palette::MINIMAX_ORANGE).bold(),
-            "MiniMax" => Style::default().fg(palette::MINIMAX_BLUE).bold(),
+            "You" => Style::default().fg(palette::ORANGE).bold(),
+            "MiniMax" => Style::default().fg(palette::BLUE).bold(),
             "System" => Style::default().fg(palette::TEXT_MUTED).italic(),
             _ => Style::default().fg(palette::TEXT_PRIMARY),
         };
@@ -509,7 +509,7 @@ pub fn render_search_results(
         let mut line_spans = vec![
             Span::styled(
                 if is_selected { "> " } else { "  " },
-                Style::default().fg(palette::MINIMAX_YELLOW),
+                Style::default().fg(palette::YELLOW),
             ),
             Span::styled(
                 format!("[{}] ", result.timestamp),
@@ -536,8 +536,8 @@ pub fn render_search_results(
             line_spans.push(Span::styled(
                 &preview[match_start..match_end],
                 Style::default()
-                    .fg(palette::MINIMAX_BLACK)
-                    .bg(palette::MINIMAX_YELLOW)
+                    .fg(palette::BLACK)
+                    .bg(palette::YELLOW)
                     .add_modifier(Modifier::BOLD),
             ));
             // After match

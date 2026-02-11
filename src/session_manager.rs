@@ -68,7 +68,7 @@ impl SessionManager {
         Ok(Self { sessions_dir })
     }
 
-    /// Create a `SessionManager` using the default location (~/.minimax/sessions)
+    /// Create a `SessionManager` using the default location (~/.axiom/sessions)
     pub fn default_location() -> std::io::Result<Self> {
         let home = dirs::home_dir().ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")

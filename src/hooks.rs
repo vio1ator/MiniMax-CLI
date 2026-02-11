@@ -312,10 +312,10 @@ impl HookContext {
         let mut env = HashMap::new();
 
         if let Some(ref name) = self.tool_name {
-            env.insert("MINIMAX_TOOL_NAME".to_string(), name.clone());
+            env.insert("AXIOM_TOOL_NAME".to_string(), name.clone());
         }
         if let Some(ref args) = self.tool_args {
-            env.insert("MINIMAX_TOOL_ARGS".to_string(), args.clone());
+            env.insert("AXIOM_TOOL_ARGS".to_string(), args.clone());
         }
         if let Some(ref result) = self.tool_result {
             // Truncate result to 10KB to avoid environment variable size limits
@@ -324,22 +324,22 @@ impl HookContext {
             } else {
                 result.clone()
             };
-            env.insert("MINIMAX_TOOL_RESULT".to_string(), truncated);
+            env.insert("AXIOM_TOOL_RESULT".to_string(), truncated);
         }
         if let Some(code) = self.tool_exit_code {
-            env.insert("MINIMAX_TOOL_EXIT_CODE".to_string(), code.to_string());
+            env.insert("AXIOM_TOOL_EXIT_CODE".to_string(), code.to_string());
         }
         if let Some(success) = self.tool_success {
-            env.insert("MINIMAX_TOOL_SUCCESS".to_string(), success.to_string());
+            env.insert("AXIOM_TOOL_SUCCESS".to_string(), success.to_string());
         }
         if let Some(ref mode) = self.mode {
-            env.insert("MINIMAX_MODE".to_string(), mode.clone());
+            env.insert("AXIOM_MODE".to_string(), mode.clone());
         }
         if let Some(ref prev) = self.previous_mode {
-            env.insert("MINIMAX_PREVIOUS_MODE".to_string(), prev.clone());
+            env.insert("AXIOM_PREVIOUS_MODE".to_string(), prev.clone());
         }
         if let Some(ref session_id) = self.session_id {
-            env.insert("MINIMAX_SESSION_ID".to_string(), session_id.clone());
+            env.insert("AXIOM_SESSION_ID".to_string(), session_id.clone());
         }
         if let Some(ref message) = self.message {
             // Truncate message to prevent env var issues
@@ -348,22 +348,22 @@ impl HookContext {
             } else {
                 message.clone()
             };
-            env.insert("MINIMAX_MESSAGE".to_string(), truncated);
+            env.insert("AXIOM_MESSAGE".to_string(), truncated);
         }
         if let Some(ref error) = self.error_message {
-            env.insert("MINIMAX_ERROR".to_string(), error.clone());
+            env.insert("AXIOM_ERROR".to_string(), error.clone());
         }
         if let Some(ref ws) = self.workspace {
-            env.insert("MINIMAX_WORKSPACE".to_string(), ws.display().to_string());
+            env.insert("AXIOM_WORKSPACE".to_string(), ws.display().to_string());
         }
         if let Some(ref model) = self.model {
-            env.insert("MINIMAX_MODEL".to_string(), model.clone());
+            env.insert("AXIOM_MODEL".to_string(), model.clone());
         }
         if let Some(tokens) = self.total_tokens {
-            env.insert("MINIMAX_TOTAL_TOKENS".to_string(), tokens.to_string());
+            env.insert("AXIOM_TOTAL_TOKENS".to_string(), tokens.to_string());
         }
         if let Some(cost) = self.session_cost {
-            env.insert("MINIMAX_SESSION_COST".to_string(), format!("{cost:.6}"));
+            env.insert("AXIOM_SESSION_COST".to_string(), format!("{cost:.6}"));
         }
 
         env
@@ -676,12 +676,9 @@ mod tests {
 
         let env = ctx.to_env_vars();
 
-        assert_eq!(
-            env.get("MINIMAX_TOOL_NAME"),
-            Some(&"exec_shell".to_string())
-        );
-        assert_eq!(env.get("MINIMAX_MODE"), Some(&"agent".to_string()));
-        assert_eq!(env.get("MINIMAX_WORKSPACE"), Some(&"/tmp".to_string()));
+        assert_eq!(env.get("AXIOM_TOOL_NAME"), Some(&"exec_shell".to_string()));
+        assert_eq!(env.get("AXIOM_MODE"), Some(&"agent".to_string()));
+        assert_eq!(env.get("AXIOM_WORKSPACE"), Some(&"/tmp".to_string()));
     }
 
     #[test]

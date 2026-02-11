@@ -131,7 +131,7 @@ where
     if total == AUTH_HEADER_PREFIX.len() {
         buf.zeroize();
         return Err(anyhow!(
-            "API key must be provided via stdin (e.g. printenv MINIMAX_API_KEY | minimax responses-api-proxy)"
+            "API key must be provided via stdin (e.g. printenv AXIOM_API_KEY | minimax responses-api-proxy)"
         ));
     }
 

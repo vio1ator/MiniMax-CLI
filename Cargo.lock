@@ -234,6 +234,53 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "axiom-cli"
+version = "0.6.0"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "async-stream",
+ "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "colored",
+ "crossterm",
+ "dirs",
+ "dotenvy",
+ "futures-util",
+ "indicatif",
+ "libc",
+ "multimap",
+ "pretty_assertions",
+ "ratatui",
+ "regex",
+ "reqwest",
+ "rustyline 15.0.0",
+ "serde",
+ "serde_json",
+ "shellexpand",
+ "shlex",
+ "starlark",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tiny_http",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "unicode-segmentation",
+ "unicode-width 0.2.0",
+ "uuid",
+ "wait-timeout",
+ "wiremock",
+ "zeroize",
+]
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1681,53 +1728,6 @@ checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
 dependencies = [
  "mime",
  "unicase",
-]
-
-[[package]]
-name = "minimax-cli"
-version = "0.6.0"
-dependencies = [
- "anyhow",
- "arboard",
- "async-stream",
- "async-trait",
- "base64",
- "bytes",
- "chrono",
- "clap",
- "clap_complete",
- "colored",
- "crossterm",
- "dirs",
- "dotenvy",
- "futures-util",
- "indicatif",
- "libc",
- "multimap",
- "pretty_assertions",
- "ratatui",
- "regex",
- "reqwest",
- "rustyline 15.0.0",
- "serde",
- "serde_json",
- "shellexpand",
- "shlex",
- "starlark",
- "tempfile",
- "thiserror 2.0.17",
- "tiny_http",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "toml",
- "tracing",
- "unicode-segmentation",
- "unicode-width 0.2.0",
- "uuid",
- "wait-timeout",
- "wiremock",
- "zeroize",
 ]
 
 [[package]]

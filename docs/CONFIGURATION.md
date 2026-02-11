@@ -6,7 +6,7 @@ MiniMax CLI reads configuration from a TOML file plus environment variables.
 
 Default config path:
 
-- `~/.minimax/config.toml`
+- `~/.axiom/config.toml`
 
 Overrides:
 
@@ -58,9 +58,9 @@ These override config values:
 - `default_text_model` (string, optional): defaults to `MiniMax-M2.1`.
 - `allow_shell` (bool, optional): defaults to `false`.
 - `max_subagents` (int, optional): defaults to `5` and is clamped to `1..=5`.
-- `skills_dir` (string, optional): defaults to `~/.minimax/skills` (each skill is a directory containing `SKILL.md`).
-- `mcp_config_path` (string, optional): defaults to `~/.minimax/mcp.json`.
-- `notes_path` (string, optional): defaults to `~/.minimax/notes.txt` and is used by the `note` tool.
+- `skills_dir` (string, optional): defaults to `~/.axiom/skills` (each skill is a directory containing `SKILL.md`).
+- `mcp_config_path` (string, optional): defaults to `~/.axiom/mcp.json`.
+- `notes_path` (string, optional): defaults to `~/.axiom/notes.txt` and is used by the `note` tool.
 - `retry.*` (optional): retry/backoff settings for API requests:
   - `[retry].enabled` (bool, default `true`)
   - `[retry].max_retries` (int, default `3`)
@@ -80,5 +80,5 @@ These keys are accepted by the config loader but not currently used by the inter
 
 ## Notes On `minimax doctor`
 
-`minimax doctor` checks default locations under `~/.minimax/` (including `config.toml` and `mcp.json`). If you override paths via `--config` or `MINIMAX_MCP_CONFIG`, the doctor output may not reflect those overrides.
+`minimax doctor` checks default locations under `~/.axiom/` (including `config.toml` and `mcp.json`). If you override paths via `--config` or `MINIMAX_MCP_CONFIG`, the doctor output may not reflect those overrides.
 

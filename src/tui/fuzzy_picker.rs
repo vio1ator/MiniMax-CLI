@@ -232,7 +232,7 @@ pub fn render(f: &mut Frame, picker: &FuzzyPicker, area: Rect) {
     let block = Block::default()
         .title(" File Picker ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(crate::palette::MINIMAX_BLUE));
+        .border_style(Style::default().fg(crate::palette::BLUE));
     f.render_widget(block.clone(), popup_area);
 
     let inner = block.inner(popup_area);
@@ -267,8 +267,8 @@ pub fn render(f: &mut Frame, picker: &FuzzyPicker, area: Rect) {
             let path_str = m.path.to_string_lossy();
             let style = if i == picker.selected {
                 Style::default()
-                    .bg(crate::palette::MINIMAX_BLUE)
-                    .fg(crate::palette::MINIMAX_BLACK)
+                    .bg(crate::palette::BLUE)
+                    .fg(crate::palette::BLACK)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -292,9 +292,9 @@ pub fn render(f: &mut Frame, picker: &FuzzyPicker, area: Rect) {
                         style
                             .add_modifier(Modifier::BOLD)
                             .fg(if i == picker.selected {
-                                crate::palette::MINIMAX_SNOW
+                                crate::palette::SNOW
                             } else {
-                                crate::palette::MINIMAX_YELLOW
+                                crate::palette::YELLOW
                             }),
                     ));
                     last_idx = idx + 1;

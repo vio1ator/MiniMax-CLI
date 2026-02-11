@@ -14,7 +14,7 @@ pub fn list_snippets(_app: &mut App) -> CommandResult {
     if registry.is_empty() {
         return CommandResult::message(
             "No snippets available.\n\n\
-             Snippets are loaded from ~/.minimax/snippets.toml"
+             Snippets are loaded from ~/.axiom/snippets.toml"
                 .to_string(),
         );
     }
@@ -37,9 +37,8 @@ pub fn list_snippets(_app: &mut App) -> CommandResult {
     );
 
     if registry.is_using_defaults() {
-        output.push_str(
-            "\n\n(Using built-in defaults - create ~/.minimax/snippets.toml to customize)",
-        );
+        output
+            .push_str("\n\n(Using built-in defaults - create ~/.axiom/snippets.toml to customize)");
     }
 
     CommandResult::message(output)

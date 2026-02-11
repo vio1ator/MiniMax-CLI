@@ -114,7 +114,7 @@ fn get_mcp_config_path(app: &App) -> PathBuf {
         return workspace_path;
     }
 
-    // Try ~/.minimax/mcp.json
+    // Try ~/.axiom/mcp.json
     if let Some(home) = dirs::home_dir() {
         let home_path = home.join(".minimax").join("mcp.json");
         if home_path.exists() {

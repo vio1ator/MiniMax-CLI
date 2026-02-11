@@ -103,7 +103,7 @@ pub fn subagents(_app: &mut App) -> CommandResult {
 }
 
 /// Show `MiniMax` dashboard and docs links
-pub fn minimax_links() -> CommandResult {
+pub fn axiom_links() -> CommandResult {
     CommandResult::message(
         "MiniMax Links:\n\
 ─────────────────────────────\n\

@@ -94,10 +94,8 @@ fn check_api_key(_app: &App) -> Vec<CheckResult> {
     let mut results = Vec::new();
 
     // Check environment variable first
-    if std::env::var("MINIMAX_API_KEY").is_ok() {
-        results.push(CheckResult::ok(
-            "MINIMAX_API_KEY environment variable is set",
-        ));
+    if std::env::var("AXIOM_API_KEY").is_ok() {
+        results.push(CheckResult::ok("AXIOM_API_KEY environment variable is set"));
     } else {
         // Check config file
         match Config::load(None, None) {
@@ -121,7 +119,7 @@ fn check_api_key(_app: &App) -> Vec<CheckResult> {
     }
 
     // Check API key format if available
-    if let Ok(key) = std::env::var("MINIMAX_API_KEY") {
+    if let Ok(key) = std::env::var("AXIOM_API_KEY") {
         if is_valid_api_key_format(&key) {
             results.push(CheckResult::ok("API key format is valid"));
         } else {
@@ -131,7 +129,7 @@ fn check_api_key(_app: &App) -> Vec<CheckResult> {
             ));
         }
     } else if let Ok(config) = Config::load(None, None)
-        && let Ok(key) = config.minimax_api_key()
+        && let Ok(key) = config.axiom_api_key()
     {
         if is_valid_api_key_format(&key) {
             results.push(CheckResult::ok("API key format is valid"));
@@ -261,7 +259,7 @@ fn check_workspace(app: &App) -> Vec<CheckResult> {
         }
 
         // Check if writable
-        let test_file = workspace.join(".minimax_write_test");
+        let test_file = workspace.join(".axiom_write_test");
         match std::fs::write(&test_file, "test") {
             Ok(_) => {
                 let _ = std::fs::remove_file(&test_file);
@@ -474,11 +472,11 @@ fn check_network() -> Vec<CheckResult> {
 fn format_diagnostic_output(groups: &[(&'static str, Vec<CheckResult>)]) -> String {
     use std::fmt::Write;
 
-    let (green_r, green_g, green_b) = palette::MINIMAX_GREEN_RGB;
-    let (orange_r, orange_g, orange_b) = palette::MINIMAX_ORANGE_RGB;
-    let (red_r, red_g, red_b) = palette::MINIMAX_RED_RGB;
-    let (blue_r, blue_g, blue_b) = palette::MINIMAX_BLUE_RGB;
-    let (muted_r, muted_g, muted_b) = palette::MINIMAX_SILVER_RGB;
+    let (green_r, green_g, green_b) = palette::GREEN_RGB;
+    let (orange_r, orange_g, orange_b) = palette::ORANGE_RGB;
+    let (red_r, red_g, red_b) = palette::RED_RGB;
+    let (blue_r, blue_g, blue_b) = palette::BLUE_RGB;
+    let (muted_r, muted_g, muted_b) = palette::SILVER_RGB;
 
     let mut output = String::new();
 
@@ -600,7 +598,7 @@ fn format_diagnostic_output(groups: &[(&'static str, Vec<CheckResult>)]) -> Stri
 
 /// Get config file path
 fn get_config_path() -> PathBuf {
-    if let Ok(path) = std::env::var("MINIMAX_CONFIG_PATH") {
+    if let Ok(path) = std::env::var("AXIOM_CONFIG_PATH") {
         return PathBuf::from(path);
     }
     dirs::home_dir()
@@ -630,7 +628,7 @@ fn get_mcp_config_path(app: &App) -> PathBuf {
         return workspace_path;
     }
 
-    // Try ~/.minimax/mcp.json
+    // Try ~/.axiom/mcp.json
     if let Some(home) = dirs::home_dir() {
         let home_path = home.join(".minimax").join("mcp.json");
         if home_path.exists() {

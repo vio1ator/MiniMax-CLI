@@ -191,9 +191,9 @@ impl SandboxPolicy {
                         }
 
                         // Protect .minimax directories from modification
-                        let minimax_dir = root.join(".minimax");
-                        if minimax_dir.is_dir() {
-                            read_only_subpaths.push(minimax_dir);
+                        let axiom_dir = root.join(".minimax");
+                        if axiom_dir.is_dir() {
+                            read_only_subpaths.push(axiom_dir);
                         }
 
                         WritableRoot {

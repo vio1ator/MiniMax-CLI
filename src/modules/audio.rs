@@ -145,7 +145,7 @@ pub async fn t2a(client: &MiniMaxClient, options: T2aOptions) -> Result<PathBuf>
         let filename = timestamped_filename("speech", &extension);
         let path = output_path(&options.output_dir, &filename);
         write_bytes(&path, &bytes)?;
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
         Ok(path)
     } else {
@@ -308,7 +308,7 @@ async fn handle_audio_response(
         let filename = timestamped_filename("speech", &extension);
         let path = output_path(output_dir, &filename);
         write_bytes(&path, &bytes)?;
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
         return Ok(path);
     }
@@ -323,7 +323,7 @@ async fn handle_audio_response(
             let filename = timestamped_filename("speech", &extension);
             let path = output_path(output_dir, &filename);
             write_bytes(&path, &bytes)?;
-            let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+            let (r, g, b) = palette::GREEN_RGB;
             println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
             return Ok(path);
         }
@@ -338,7 +338,7 @@ async fn handle_audio_response(
         let filename = timestamped_filename("speech", &extension);
         let path = output_path(output_dir, &filename);
         write_bytes(&path, &bytes)?;
-        let (r, g, b) = palette::MINIMAX_GREEN_RGB;
+        let (r, g, b) = palette::GREEN_RGB;
         println!("{} {}", "Saved".truecolor(r, g, b).bold(), path.display());
         return Ok(path);
     }
