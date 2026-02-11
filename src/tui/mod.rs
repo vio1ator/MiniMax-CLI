@@ -6,6 +6,7 @@ pub mod app;
 pub mod approval;
 pub mod clipboard;
 pub mod command_completer;
+pub mod duo_session_picker;
 pub mod event_broker;
 pub mod fuzzy_picker;
 pub mod history;

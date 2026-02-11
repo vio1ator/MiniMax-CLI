@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::palette;
 use crate::tui::approval::ReviewDecision;
+use crate::tui::duo_session_picker::DuoSessionPickerResult;
 use crate::tui::history_picker::HistoryPickerResult;
 use crate::tui::model_picker::ModelPickerResult;
 use crate::tui::session_picker::SessionPickerResult;
@@ -16,6 +17,7 @@ pub enum ModalKind {
     ModelPicker,
     HistoryPicker,
     Search,
+    DuoSession,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +39,12 @@ pub enum ViewEvent {
     },
     SearchResultSelected {
         result: SearchResult,
+    },
+    DuoSessionSelected {
+        session_id: String,
+    },
+    DuoSessionPickerResult {
+        result: DuoSessionPickerResult,
     },
 }
 
@@ -320,3 +328,6 @@ impl ModalView for HelpView {
 
 // Re-export search result type
 pub use crate::tui::search_view::SearchResult;
+
+pub mod duo_view;
+pub use duo_view::DuoView;
