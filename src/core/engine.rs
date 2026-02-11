@@ -742,15 +742,18 @@ impl Engine {
             }
         }
         if mode == AppMode::Duo {
-            if self.config.features.enabled(Feature::Duo) {
-                builder = builder.with_duo_tools(self.config.duo_session.clone());
-            } else {
-                let _ = self
-                    .tx_event
-                    .send(Event::status("Duo tools are disabled by feature flags"))
-                    .await;
-            }
-        }
+             if self.config.features.enabled(Feature::Duo) {
+                 builder = builder.with_duo_file_tools(
+                     self.config.duo_session.clone(),
+                     self.session.workspace.clone(),
+                 );
+             } else {
+                 let _ = self
+                     .tx_event
+                     .send(Event::status("Duo tools are disabled by feature flags"))
+                     .await;
+             }
+         }
 
         let tool_registry = match mode {
             AppMode::Agent | AppMode::Yolo | AppMode::Rlm | AppMode::Duo => {

@@ -6,8 +6,9 @@
 //! - Conversion to API Tool format
 //! - Filtering by capability
 
-use std::collections::HashMap;
-use std::sync::Arc;
+ use std::collections::HashMap;
+ use std::path::PathBuf;
+ use std::sync::Arc;
 
 use serde_json::Value;
 
@@ -435,16 +436,33 @@ impl ToolRegistryBuilder {
             )))
     }
 
-    /// Include Duo tools for dialectical autocoding.
-    #[must_use]
-    pub fn with_duo_tools(self, session: SharedDuoSession) -> Self {
-        use super::duo::{DuoAdvanceTool, DuoCoachTool, DuoInitTool, DuoPlayerTool, DuoStatusTool};
-        self.with_tool(Arc::new(DuoInitTool::new(session.clone())))
-            .with_tool(Arc::new(DuoPlayerTool::new(session.clone())))
-            .with_tool(Arc::new(DuoCoachTool::new(session.clone())))
-            .with_tool(Arc::new(DuoAdvanceTool::new(session.clone())))
-            .with_tool(Arc::new(DuoStatusTool::new(session)))
-    }
+     /// Include Duo tools for dialectical autocoding.
+     #[must_use]
+     pub fn with_duo_tools(self, session: SharedDuoSession) -> Self {
+         use super::duo::{DuoAdvanceTool, DuoCoachTool, DuoInitTool, DuoPlayerTool, DuoStatusTool};
+         self.with_tool(Arc::new(DuoInitTool::new(session.clone())))
+             .with_tool(Arc::new(DuoPlayerTool::new(session.clone())))
+             .with_tool(Arc::new(DuoCoachTool::new(session.clone())))
+             .with_tool(Arc::new(DuoAdvanceTool::new(session.clone())))
+             .with_tool(Arc::new(DuoStatusTool::new(session)))
+     }
+
+     /// Include Duo tools with file system access for a specific workspace.
+     #[must_use]
+     pub fn with_duo_file_tools(self, session: SharedDuoSession, workspace: PathBuf) -> Self {
+         use super::duo::{
+             DuoAdvanceTool, DuoCoachTool, DuoInitTool, DuoPlayerTool, DuoStatusTool,
+             DuoReadFileTool, DuoWriteFileTool, DuoListDirTool,
+         };
+         self.with_tool(Arc::new(DuoInitTool::new(session.clone())))
+             .with_tool(Arc::new(DuoPlayerTool::new(session.clone())))
+             .with_tool(Arc::new(DuoCoachTool::new(session.clone())))
+             .with_tool(Arc::new(DuoAdvanceTool::new(session.clone())))
+             .with_tool(Arc::new(DuoStatusTool::new(session)))
+             .with_tool(Arc::new(DuoWriteFileTool::new(workspace.clone())))
+             .with_tool(Arc::new(DuoReadFileTool::new(workspace.clone())))
+             .with_tool(Arc::new(DuoListDirTool::new(workspace)))
+     }
 
     /// Include sub-agent management tools.
     #[must_use]
