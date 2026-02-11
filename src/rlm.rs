@@ -1122,7 +1122,7 @@ fn run_repl(context_id: &str, initial_load: Option<&std::path::Path>) -> Result<
 
     let mut editor = Editor::<(), DefaultHistory>::new()?;
     let history_path = dirs::home_dir()
-        .map(|h| h.join(".minimax").join("rlm_history"))
+        .map(|h| h.join(".axiom").join("rlm_history"))
         .unwrap_or_default();
     let _ = editor.load_history(&history_path);
 

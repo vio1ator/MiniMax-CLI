@@ -6,7 +6,7 @@
 //! - `AGENTS.md` - Project-level agent instructions (primary)
 //! - `.claude/instructions.md` - Claude-style hidden instructions
 //! - `CLAUDE.md` - Claude-style instructions
-//! - `.minimax/instructions.md` - Hidden instructions file (legacy)
+//! - `.axiom/instructions.md` - Hidden instructions file
 //! - `.axiom/instructions.md` - Hidden instructions file
 //!
 //! The loaded content is injected into the system prompt to give the agent
@@ -24,7 +24,7 @@ const PROJECT_CONTEXT_FILES: &[&str] = &[
     "AGENTS.md",
     ".claude/instructions.md",
     "CLAUDE.md",
-    ".minimax/instructions.md",
+    ".axiom/instructions.md",
 ];
 
 /// Maximum size for project context files (to prevent loading huge files)
@@ -202,8 +202,8 @@ fn load_context_file(path: &Path) -> Result<String, ProjectContextError> {
 fn check_trust_status(workspace: &Path) -> bool {
     // Check for trust markers
     let trust_markers = [
-        workspace.join(".minimax").join("trusted"),
-        workspace.join(".minimax").join("trust.json"),
+        workspace.join(".axiom").join("trusted"),
+        workspace.join(".axiom").join("trust.json"),
     ];
 
     for marker in &trust_markers {
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn test_load_project_context_hidden_dir() {
         let tmp = tempdir().expect("tempdir");
-        let hidden_dir = tmp.path().join(".minimax");
+        let hidden_dir = tmp.path().join(".axiom");
         fs::create_dir(&hidden_dir).expect("mkdir");
         fs::write(hidden_dir.join("instructions.md"), "Hidden instructions").expect("write");
 
@@ -397,7 +397,7 @@ mod tests {
         assert!(!check_trust_status(tmp.path()));
 
         // Create trust marker
-        let axiom_dir = tmp.path().join(".minimax");
+        let axiom_dir = tmp.path().join(".axiom");
         fs::create_dir(&axiom_dir).expect("mkdir");
         fs::write(axiom_dir.join("trusted"), "").expect("write");
 

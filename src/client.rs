@@ -33,7 +33,7 @@ impl AnthropicClient {
     /// Create an Anthropic-compatible client using the default model.
     pub fn new(config: &Config) -> Result<Self> {
         let model = config
-            .default_text_model
+            .default_model
             .clone()
             .unwrap_or_else(|| "anthropic/claude-3-5-sonnet-20241022".to_string());
         Self::with_model(config, model)

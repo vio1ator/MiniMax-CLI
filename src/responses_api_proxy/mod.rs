@@ -36,7 +36,7 @@ pub struct Args {
     pub http_shutdown: bool,
 
     /// Absolute URL the proxy should forward requests to.
-    #[arg(long, default_value = "https://api.minimax.io/v1/responses")]
+    #[arg(long, default_value = "https://api.axiom.io/v1/responses")]
     pub upstream_url: String,
 }
 

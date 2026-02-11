@@ -11,8 +11,8 @@ use anyhow::{Context, Result};
 #[must_use]
 pub fn default_skills_dir() -> PathBuf {
     dirs::home_dir().map_or_else(
-        || PathBuf::from("/tmp/minimax/skills"),
-        |p| p.join(".minimax").join("skills"),
+        || PathBuf::from("/tmp/axiom/skills"),
+        |p| p.join(".axiom").join("skills"),
     )
 }
 

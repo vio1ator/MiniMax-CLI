@@ -962,7 +962,7 @@ async fn run_event_loop(
                                         ) {
                                             Ok(config) => {
                                                 // Apply relevant config changes to the app
-                                                if let Some(model) = &config.default_text_model {
+                                                if let Some(model) = &config.default_model {
                                                     app.model.clone_from(model);
                                                 }
                                                 app.allow_shell = config.allow_shell();
@@ -3250,7 +3250,7 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(palette::TEXT_PRIMARY),
             )));
             lines.push(Line::from(Span::styled(
-                "Get yours at: https://platform.minimax.io",
+                "Get yours at: your provider's platform",
                 Style::default().fg(palette::ORANGE),
             )));
             lines.push(Line::from(""));

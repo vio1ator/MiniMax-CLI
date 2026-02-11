@@ -35,8 +35,8 @@ pub fn usage(app: &mut App) -> CommandResult {
 
     // Tips
     output.push_str("Tips:\n");
-    output.push_str("  • Check your MiniMax dashboard for exact quota\n");
-    output.push_str("  • Visit: https://platform.minimax.io\n");
+    output.push_str("  • Check your dashboard for exact quota\n");
+    output.push_str("  • Visit your provider's platform\n");
     output.push_str("  • Use /compact to reduce context when near limits\n");
 
     CommandResult::message(output)

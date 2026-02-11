@@ -49,8 +49,8 @@ impl SnippetRegistry {
     /// Get the default snippets file path
     pub fn default_path() -> PathBuf {
         dirs::home_dir()
-            .map(|p| p.join(".minimax").join("snippets.toml"))
-            .unwrap_or_else(|| PathBuf::from(".minimax/snippets.toml"))
+            .map(|p| p.join(".axiom").join("snippets.toml"))
+            .unwrap_or_else(|| PathBuf::from(".axiom/snippets.toml"))
     }
 
     /// Load snippets from disk, or use defaults if not found

@@ -1,6 +1,6 @@
 //! Settings system - Persistent user preferences
 //!
-//! Settings are stored at ~/.config/minimax/settings.toml
+//! Settings are stored at ~/.config/axiom/settings.toml
 
 use std::path::PathBuf;
 
@@ -58,7 +58,7 @@ impl Settings {
     pub fn path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir()
             .context("Failed to resolve config directory: not found.")?
-            .join("minimax");
+            .join("axiom");
         Ok(config_dir.join("settings.toml"))
     }
 
@@ -226,7 +226,7 @@ impl Settings {
 /// Get the default input history path
 fn default_input_history_path() -> PathBuf {
     dirs::config_dir()
-        .map(|p| p.join("minimax").join("input_history.txt"))
+        .map(|p| p.join("axiom").join("input_history.txt"))
         .unwrap_or_else(|| PathBuf::from("input_history.txt"))
 }
 

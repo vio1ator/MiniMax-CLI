@@ -31,7 +31,7 @@ pub enum SandboxPolicy {
 
     /// Indicates the process is already running in an external sandbox.
     ///
-    /// Use this when minimax-cli is itself running inside a container,
+    /// Use this when axiom-cli is itself running inside a container,
     /// VM, or other sandboxed environment. This avoids double-sandboxing
     /// which can cause issues.
     #[serde(rename = "external-sandbox")]
@@ -190,8 +190,8 @@ impl SandboxPolicy {
                             read_only_subpaths.push(git_dir);
                         }
 
-                        // Protect .minimax directories from modification
-                        let axiom_dir = root.join(".minimax");
+                        // Protect .axiom directories from modification
+                        let axiom_dir = root.join(".axiom");
                         if axiom_dir.is_dir() {
                             read_only_subpaths.push(axiom_dir);
                         }

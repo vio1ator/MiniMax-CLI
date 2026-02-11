@@ -1,4 +1,3 @@
-
 //! Core engine for Axiom CLI.
 //!
 //! The engine handles all AI interactions in a background task,
@@ -218,14 +217,14 @@ enum ToolExecGuard<'a> {
 
 const TOOL_CALL_START_MARKERS: [&str; 5] = [
     "[TOOL_CALL]",
-    "<minimax:tool_call",
+    "<axiom:tool_call",
     "<tool_call",
     "<invoke ",
     "<function_calls>",
 ];
 const TOOL_CALL_END_MARKERS: [&str; 5] = [
     "[/TOOL_CALL]",
-    "</minimax:tool_call>",
+    "</axiom:tool_call>",
     "</tool_call>",
     "</invoke>",
     "</function_calls>",

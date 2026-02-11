@@ -1,4 +1,3 @@
-
 //! Core engine module for Axiom CLI.
 //!
 //! This module provides the event-driven architecture that separates

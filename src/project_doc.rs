@@ -1,7 +1,7 @@
 //! Project document discovery and loading
 //!
 //! Supports auto-discovery of project instructions like Claude Code.
-//! Priority: AGENTS.md > .claude/instructions.md > CLAUDE.md > .minimax/instructions.md
+//! Priority: AGENTS.md > .claude/instructions.md > CLAUDE.md > .axiom/instructions.md
 
 #![allow(dead_code)]
 
@@ -14,7 +14,7 @@ pub const DOC_FILENAMES: &[&str] = &[
     "AGENTS.md",
     ".claude/instructions.md",
     "CLAUDE.md",
-    ".minimax/instructions.md",
+    ".axiom/instructions.md",
 ];
 
 /// Maximum bytes to read from project docs (default: 32KB)

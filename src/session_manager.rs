@@ -73,7 +73,7 @@ impl SessionManager {
         let home = dirs::home_dir().ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")
         })?;
-        Self::new(home.join(".minimax").join("sessions"))
+        Self::new(home.join(".axiom").join("sessions"))
     }
 
     /// Save a session to disk

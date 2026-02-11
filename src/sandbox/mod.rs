@@ -5,7 +5,7 @@
 
 //!
 //! This module provides sandboxing capabilities for shell commands executed by
-//! minimax-cli. Sandboxing restricts what system resources a command can access,
+//! Axiom CLI. Sandboxing restricts what system resources a command can access,
 //! preventing accidental or malicious damage to the system.
 //!
 //! # Platform Support

@@ -324,7 +324,7 @@ mod tests {
         let mut custom_windows = std::collections::HashMap::new();
         let data = HeaderData {
             mode: AppMode::Normal,
-            model: "minimax-m2.1",
+            model: "claude-3-5-sonnet-20241022",
             context_used: 64_000,
             context_max: Some(128_000),
             is_streaming: false,
@@ -342,7 +342,7 @@ mod tests {
         let mut custom_windows = std::collections::HashMap::new();
         let data = HeaderData {
             mode: AppMode::Normal,
-            model: "minimax-m2.1",
+            model: "claude-3-5-sonnet-20241022",
             context_used: 0,
             context_max: Some(128_000),
             is_streaming: false,

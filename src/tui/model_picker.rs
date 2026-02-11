@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn test_validate_model_case_insensitive() {
-        let model = validate_model("minimax-m2.1");
+        let model = validate_model("claude-3-5-sonnet-20241022");
         assert!(model.is_some());
         assert_eq!(model.unwrap().id, "MiniMax-M2.1");
     }
@@ -330,12 +330,12 @@ mod tests {
     #[test]
     fn test_resolve_model_id() {
         assert_eq!(
-            resolve_model_id("MiniMax-M2.1"),
-            Some("MiniMax-M2.1".to_string())
+            resolve_model_id("claude-3-5-sonnet-20241022"),
+            Some("claude-3-5-sonnet-20241022".to_string())
         );
         assert_eq!(
-            resolve_model_id("minimax-text-01"),
-            Some("MiniMax-Text-01".to_string())
+            resolve_model_id("claude-3-5-sonnet-20241022"),
+            Some("claude-3-5-sonnet-20241022".to_string())
         );
     }
 

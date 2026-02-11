@@ -15,7 +15,7 @@ use crate::models::{MessageRequest, MessageResponse, StreamEvent};
 /// This trait abstracts over different LLM API providers, allowing the application
 /// to work with any provider that implements this interface.
 pub trait LlmProvider: Send + Sync {
-    /// Returns the provider name (e.g., "anthropic", "openai", "minimax")
+     /// Returns the provider name (e.g., "anthropic", "openai")
     fn provider_name(&self) -> &'static str;
 
     /// Returns the model identifier being used

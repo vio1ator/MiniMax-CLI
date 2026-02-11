@@ -108,15 +108,15 @@ fn get_mcp_config_path(app: &App) -> PathBuf {
     // Try to get from app's mcp_config_path field
     // Since we can't directly access it, use default paths
 
-    // Try workspace/.minimax/mcp.json first
-    let workspace_path = app.workspace.join(".minimax").join("mcp.json");
+    // Try workspace/.axiom/mcp.json first
+    let workspace_path = app.workspace.join(".axiom").join("mcp.json");
     if workspace_path.exists() {
         return workspace_path;
     }
 
     // Try ~/.axiom/mcp.json
     if let Some(home) = dirs::home_dir() {
-        let home_path = home.join(".minimax").join("mcp.json");
+        let home_path = home.join(".axiom").join("mcp.json");
         if home_path.exists() {
             return home_path;
         }

@@ -134,15 +134,6 @@ pub fn context_window_for_model(
     }
 
     // Then check built-in models
-    if lower.contains("minimax-m2.1") || lower.contains("m2.1") {
-        return Some(1_000_000);
-    }
-    if lower.contains("minimax-text-01") {
-        return Some(256_000);
-    }
-    if lower.contains("minimax-coding-01") {
-        return Some(128_000);
-    }
     if lower.contains("claude") {
         return Some(200_000);
     }

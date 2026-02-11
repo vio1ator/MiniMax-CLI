@@ -192,8 +192,8 @@ impl ToolContext {
     #[must_use]
     pub fn new(workspace: impl Into<PathBuf>) -> Self {
         let workspace = workspace.into();
-        let notes_path = workspace.join(".minimax").join("notes.md");
-        let mcp_config_path = workspace.join(".minimax").join("mcp.json");
+        let notes_path = workspace.join(".axiom").join("notes.md");
+        let mcp_config_path = workspace.join(".axiom").join("mcp.json");
         Self {
             workspace,
             trust_mode: false,

@@ -690,7 +690,7 @@ fn should_skip_file(file_name: &str) -> bool {
             | "vendor"
             | ".DS_Store"
             | "Thumbs.db"
-            | ".minimax"
+            | ".axiom"
             | "Cargo.lock"
             | "package-lock.json"
             | "yarn.lock"

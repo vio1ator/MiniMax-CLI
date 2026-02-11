@@ -105,11 +105,11 @@ pub fn subagents(_app: &mut App) -> CommandResult {
 /// Show `MiniMax` dashboard and docs links
 pub fn axiom_links() -> CommandResult {
     CommandResult::message(
-        "MiniMax Links:\n\
-─────────────────────────────\n\
-Dashboard: https://platform.minimax.io\n\
-Docs:      https://platform.minimax.io/docs\n\n\
-Tip: API keys are available in the dashboard console.",
+        "Axiom Links:\n\
+  ─────────────────────────────\n\
+  Dashboard: https://platform.axiom.io\n\
+  Docs:      https://platform.axiom.io/docs\n\n\
+  Tip: API keys are available in the dashboard console.",
     )
 }
 

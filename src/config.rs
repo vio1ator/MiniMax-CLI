@@ -1,4 +1,4 @@
-//! Configuration loading and defaults for axiom-cli.
+//! Configuration loading and defaults for Axiom CLI.
 
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -71,7 +71,7 @@ impl RetryPolicy {
 pub struct Config {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
-    pub default_text_model: Option<String>,
+    pub default_model: Option<String>,
     pub default_image_model: Option<String>,
     pub default_video_model: Option<String>,
     pub default_audio_model: Option<String>,
@@ -228,7 +228,7 @@ impl Config {
     pub fn coding_model(&self) -> String {
         self.default_coding_model
             .clone()
-            .or_else(|| self.default_text_model.clone())
+            .or_else(|| self.default_model.clone())
             .unwrap_or_else(|| "anthropic/claude-3-5-sonnet-20241022".to_string())
     }
 
@@ -653,7 +653,7 @@ fn merge_config(base: Config, override_cfg: Config) -> Config {
     Config {
         api_key: override_cfg.api_key.or(base.api_key),
         base_url: override_cfg.base_url.or(base.base_url),
-        default_text_model: override_cfg.default_text_model.or(base.default_text_model),
+        default_model: override_cfg.default_model.or(base.default_model),
         default_image_model: override_cfg
             .default_image_model
             .or(base.default_image_model),
@@ -743,7 +743,7 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
         // Create new minimal config
         format!(
             r#" # Axiom CLI Configuration
-# Get your API key from https://platform.axiom.io
+ # Get your API key from your LLM provider's platform
 
 api_key = "{api_key}"
 
@@ -751,7 +751,7 @@ api_key = "{api_key}"
 # base_url = "https://api.axiom.io"
 
  # Default model
- default_text_model = "anthropic/claude-3-5-sonnet-20241022"
+  default_model = "anthropic/claude-3-5-sonnet-20241022"
 "#
         )
     };

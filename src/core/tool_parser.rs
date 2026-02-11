@@ -57,9 +57,8 @@ fn get_tool_call_regex() -> &'static Regex {
 
 fn get_xml_tool_call_regex() -> &'static Regex {
     XML_TOOL_CALL_REGEX.get_or_init(|| {
-        // Match <minimax:tool_call>...</minimax:tool_call> or similar XML patterns
-        Regex::new(r"(?s)<(?:minimax:)?tool_call[^>]*>\s*(.*?)\s*</(?:minimax:)?tool_call>")
-            .unwrap()
+        // Match <axiom:tool_call>...</axiom:tool_call> or similar XML patterns
+        Regex::new(r"(?s)<(?:axiom:)?tool_call[^>]*>\s*(.*?)\s*</(?:axiom:)?tool_call>").unwrap()
     })
 }
 
@@ -104,7 +103,7 @@ pub fn parse_tool_calls(text: &str) -> ParseResult {
         clean_text = clean_text.replace(full_match, "");
     }
 
-    // Parse XML-style <minimax:tool_call> or <tool_call> format
+    // Parse XML-style <axiom:tool_call> or <tool_call> format
     let xml_regex = get_xml_tool_call_regex();
     for cap in xml_regex.captures_iter(text) {
         let (Some(full_match), Some(inner)) = (cap.get(0), cap.get(1)) else {
@@ -439,7 +438,7 @@ fn extract_json_object(text: &str) -> Option<Value> {
 /// Check if text contains tool call markers (either format).
 pub fn has_tool_call_markers(text: &str) -> bool {
     text.contains("[TOOL_CALL]")
-        || text.contains("<minimax:tool_call")
+        || text.contains("<axiom:tool_call")
         || text.contains("<tool_call")
         || text.contains("<invoke ")
 }
@@ -461,7 +460,7 @@ pub fn clean_streaming_text(text: &str) -> String {
     let patterns_to_remove = [
         r"\[TOOL_CALL\]",
         r"\[/TOOL_CALL\]",
-        r"</?minimax:tool_call[^>]*>",
+        r"</?axiom:tool_call[^>]*>",
         r"</?tool_call[^>]*>",
         r"<invoke\s+name\s*=\s*[^>]*>",
         r"</invoke>",
@@ -494,7 +493,7 @@ pub fn clean_streaming_text(text: &str) -> String {
 /// This is used to suppress streaming output when we detect the start of a tool block.
 pub fn is_tool_call_start(text: &str) -> bool {
     text.contains("[TOOL_CALL]")
-        || text.contains("<minimax:tool_call")
+        || text.contains("<axiom:tool_call")
         || text.contains("<tool_call")
         || text.contains("<invoke ")
         || text.contains("<function_calls>")
@@ -504,7 +503,7 @@ pub fn is_tool_call_start(text: &str) -> bool {
 /// Check if a streaming chunk contains the end of a tool call marker.
 pub fn is_tool_call_end(text: &str) -> bool {
     text.contains("[/TOOL_CALL]")
-        || text.contains("</minimax:tool_call>")
+        || text.contains("</axiom:tool_call>")
         || text.contains("</tool_call>")
         || text.contains("</invoke>")
         || text.contains("</function_calls>")

@@ -48,7 +48,7 @@ pub type StreamEventBox =
 /// - Implementations should handle their own authentication and base URL configuration
 #[allow(async_fn_in_trait)]
 pub trait LlmClient: Send + Sync {
-    /// Returns the provider name (e.g., "anthropic", "openai", "minimax")
+    /// Returns the provider name (e.g., "anthropic", "openai")
     fn provider_name(&self) -> &'static str;
 
     /// Returns the model identifier being used

@@ -198,7 +198,7 @@ impl McpConnection {
             "params": {
                 "protocolVersion": "2024-11-05",
                 "clientInfo": {
-                    "name": "minimax-cli",
+                     "name": "axiom-cli",
                     "version": env!("CARGO_PKG_VERSION")
                 },
                 "capabilities": { "tools": {} }
@@ -690,7 +690,7 @@ pub fn call_tool(
         "method": "initialize",
         "params": {
             "protocolVersion": "2024-11-05",
-            "clientInfo": { "name": "minimax-cli", "version": env!("CARGO_PKG_VERSION") },
+             "clientInfo": { "name": "axiom-cli", "version": env!("CARGO_PKG_VERSION") },
             "capabilities": {}
         }
     });

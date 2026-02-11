@@ -128,10 +128,10 @@ pub const COMMANDS: &[CommandInfo] = &[
         usage: "/subagents",
     },
     CommandInfo {
-        name: "minimax",
+        name: "axiom",
         aliases: &["dashboard", "api"],
-        description: "Show MiniMax dashboard and docs links",
-        usage: "/minimax",
+        description: "Show Axiom dashboard and docs links",
+        usage: "/axiom",
     },
     // Session commands
     CommandInfo {
@@ -387,7 +387,7 @@ pub fn execute(cmd: &str, app: &mut App) -> CommandResult {
         "model" => core::model(app, arg),
         "queue" | "queued" => queue::queue(app, arg),
         "subagents" | "agents" => core::subagents(app),
-        "minimax" | "dashboard" | "api" => core::axiom_links(),
+        "axiom" | "dashboard" | "api" => core::axiom_links(),
 
         // Session commands
         "save" => session::save(app, arg),

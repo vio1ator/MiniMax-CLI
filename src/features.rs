@@ -1,4 +1,4 @@
-//! Feature flags and metadata for minimax-cli.
+//! Feature flags and metadata for Axiom CLI.
 
 #![allow(dead_code)]
 

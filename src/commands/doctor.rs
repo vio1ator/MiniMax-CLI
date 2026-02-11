@@ -125,7 +125,7 @@ fn check_api_key(_app: &App) -> Vec<CheckResult> {
         } else {
             results.push(CheckResult::warning_with_hint(
                 "API key format looks unusual (expected: sk-api-...)",
-                "Verify your key at https://platform.minimax.io",
+                "Verify your key at your LLM provider's platform",
             ));
         }
     } else if let Ok(config) = Config::load(None, None)
@@ -136,7 +136,7 @@ fn check_api_key(_app: &App) -> Vec<CheckResult> {
         } else {
             results.push(CheckResult::warning_with_hint(
                 "API key format looks unusual (expected: sk-api-...)",
-                "Verify your key at https://platform.minimax.io",
+                "Verify your key at your LLM provider's platform",
             ));
         }
     }
@@ -441,7 +441,7 @@ fn check_network() -> Vec<CheckResult> {
     let mut results = Vec::new();
 
     // Basic DNS resolution check
-    let api_hosts = ["api.minimax.io", "api.minimaxi.com"];
+    let api_hosts = ["api.axiom.io"];
     let mut any_resolved = false;
 
     for host in &api_hosts {
@@ -602,35 +602,35 @@ fn get_config_path() -> PathBuf {
         return PathBuf::from(path);
     }
     dirs::home_dir()
-        .map(|home| home.join(".minimax").join("config.toml"))
-        .unwrap_or_else(|| PathBuf::from(".minimax/config.toml"))
+        .map(|home| home.join(".axiom").join("config.toml"))
+        .unwrap_or_else(|| PathBuf::from(".axiom/config.toml"))
 }
 
 /// Get session directory path
 fn get_session_dir() -> PathBuf {
     dirs::home_dir()
-        .map(|home| home.join(".minimax").join("sessions"))
-        .unwrap_or_else(|| PathBuf::from(".minimax/sessions"))
+        .map(|home| home.join(".axiom").join("sessions"))
+        .unwrap_or_else(|| PathBuf::from(".axiom/sessions"))
 }
 
 /// Get skills directory path
 fn get_skills_dir() -> PathBuf {
     dirs::home_dir()
-        .map(|home| home.join(".minimax").join("skills"))
-        .unwrap_or_else(|| PathBuf::from(".minimax/skills"))
+        .map(|home| home.join(".axiom").join("skills"))
+        .unwrap_or_else(|| PathBuf::from(".axiom/skills"))
 }
 
 /// Get MCP config path from app or default locations
 fn get_mcp_config_path(app: &App) -> PathBuf {
-    // Try workspace/.minimax/mcp.json first
-    let workspace_path = app.workspace.join(".minimax").join("mcp.json");
+    // Try workspace/.axiom/mcp.json first
+    let workspace_path = app.workspace.join(".axiom").join("mcp.json");
     if workspace_path.exists() {
         return workspace_path;
     }
 
     // Try ~/.axiom/mcp.json
     if let Some(home) = dirs::home_dir() {
-        let home_path = home.join(".minimax").join("mcp.json");
+        let home_path = home.join(".axiom").join("mcp.json");
         if home_path.exists() {
             return home_path;
         }

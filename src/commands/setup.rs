@@ -72,8 +72,8 @@ pub fn setup(_app: &mut App) -> CommandResult {
 
 fn choose_base_url() -> String {
     println!("Step 1/6: Choose your region");
-    println!("  1) US/Global - https://api.minimax.io");
-    println!("  2) China     - https://api.minimaxi.com");
+    println!("  1) Default     - https://api.axiom.io");
+    println!("  2) Alternative - https://api.axiom.io");
     println!();
 
     loop {
@@ -88,9 +88,9 @@ fn choose_base_url() -> String {
 
         let input = input.trim();
         if input.is_empty() || input == "1" {
-            return "https://api.minimax.io".to_string();
+            return "https://api.axiom.io".to_string();
         } else if input == "2" {
-            return "https://api.minimaxi.com".to_string();
+            return "https://api.axiom.io".to_string();
         } else {
             println!("Invalid choice. Please enter 1 or 2.");
         }
@@ -98,8 +98,8 @@ fn choose_base_url() -> String {
 }
 
 fn enter_api_key() -> Result<String, io::Error> {
-    println!("\nStep 2/6: Enter your MiniMax API Key");
-    println!("  Get your API key from: https://platform.minimax.io");
+    println!("\nStep 2/6: Enter your API Key");
+    println!("  Get your API key from your LLM provider's platform");
     println!();
 
     loop {
@@ -239,7 +239,7 @@ fn get_config_path() -> Option<PathBuf> {
     {
         return Some(PathBuf::from(path));
     }
-    dirs::home_dir().map(|home| home.join(".minimax").join("config.toml"))
+    dirs::home_dir().map(|home| home.join(".axiom").join("config.toml"))
 }
 
 fn save_config(
@@ -266,7 +266,7 @@ api_key = "{api_key}"
 base_url = "{base_url}"
 
 # Default model for text generation
-default_text_model = "{default_model}"
+ default_model = "{default_model}"
 
 # Security settings
 allow_shell = {allow_shell}
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn test_save_config_structure() {
         // Test that config content is properly formatted
-        let base_url = "https://api.minimax.io";
+        let base_url = "https://api.axiom.io";
         let api_key = "test-key-12345";
         let default_model = "MiniMax-M2.1";
         let allow_shell = true;
@@ -340,7 +340,7 @@ api_key = "{api_key}"
 base_url = "{base_url}"
 
 # Default model for text generation
-default_text_model = "{default_model}"
+ default_model = "{default_model}"
 
 # Security settings
 allow_shell = {allow_shell}
@@ -367,8 +367,8 @@ exponential_base = 2.0
         );
 
         assert!(config.contains("api_key = \"test-key-12345\""));
-        assert!(config.contains("base_url = \"https://api.minimax.io\""));
-        assert!(config.contains("default_text_model = \"MiniMax-M2.1\""));
+        assert!(config.contains("base_url = \"https://api.axiom.io\""));
+        assert!(config.contains("default_model = \"MiniMax-M2.1\""));
         assert!(config.contains("allow_shell = true"));
     }
 }

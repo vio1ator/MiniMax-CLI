@@ -15,7 +15,7 @@ pub fn reload(app: &mut App) -> CommandResult {
     match Config::load(config_path, profile.as_deref()) {
         Ok(config) => {
             // Apply relevant config changes to the app
-            if let Some(model) = &config.default_text_model {
+            if let Some(model) = &config.default_model {
                 app.model.clone_from(model);
             }
             app.allow_shell = config.allow_shell();

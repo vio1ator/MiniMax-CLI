@@ -919,7 +919,7 @@ fn should_skip_file(file_name: &str) -> bool {
             | "vendor"
             | ".DS_Store"
             | "Thumbs.db"
-            | ".minimax"
+            | ".axiom"
             | "Cargo.lock"
             | "package-lock.json"
             | "yarn.lock"
@@ -932,7 +932,7 @@ fn should_skip_file(file_name: &str) -> bool {
 fn get_session_dir() -> Result<std::path::PathBuf, anyhow::Error> {
     let config_dir =
         dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?;
-    let session_dir = config_dir.join("minimax").join("sessions").join("duo");
+    let session_dir = config_dir.join("axiom").join("sessions").join("duo");
     Ok(session_dir)
 }
 

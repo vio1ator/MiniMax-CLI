@@ -1,8 +1,8 @@
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║                         Axiom CLI Configuration                            ║
-# ║                                                                              ║
-# ║  Unofficial CLI for MiniMax Platform - Not affiliated with MiniMax Inc.     ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
+ # ╔══════════════════════════════════════════════════════════════════════════════╗
+ # ║                         Axiom CLI Configuration                            ║
+ # ║                                                                              ║
+ # ║  CLI for Axiom Platform - Generic LLM provider integration                 ║
+ # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 # See `docs/CONFIGURATION.md` for how config is loaded (profiles, env overrides, etc.).
 
@@ -15,20 +15,20 @@ api_key = "YOUR_AXIOM_API_KEY" # must be non-empty
 # ─────────────────────────────────────────────────────────────────────────────────
 # Base URLs
 # ─────────────────────────────────────────────────────────────────────────────────
-base_url = "https://api.minimax.io" # US/global endpoint (default)
-# base_url = "https://api.minimaxi.com"         # China endpoint
-# anthropic_base_url = "https://api.minimax.io/anthropic"  # Computed from base_url
+ base_url = "https://api.axiom.io" # Default endpoint (default)
+ # base_url = "https://api.axiom.io"            # Alternative endpoint
+ # anthropic_base_url = "https://api.axiom.io/anthropic"  # Computed from base_url
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Default Models
 # ─────────────────────────────────────────────────────────────────────────────────
-default_text_model = "model-01"
+ default_model = "anthropic/claude-3-5-sonnet-20241022"
 
 # Parsed but currently unused (reserved for future versions):
-# default_image_model = "image-01"
-# default_video_model = "video-01"
-# default_audio_model = "speech-01"
-# default_music_model = "music-01"
+ # default_image_model = "image-gen-01"
+ # default_video_model = "video-gen-01"
+ # default_audio_model = "audio-01"
+ # default_music_model = "music-01"
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Paths
@@ -104,21 +104,21 @@ player_temperature = 0.7         # Temperature for player implementation
 # Coding API Configuration
 # ─────────────────────────────────────────────────────────────────────────────────
 # Use a separate API key and endpoint for coding tasks
-# api_key_2 = "YOUR_CODING_API_KEY"           # Optional: separate coding API key
-# base_url_2 = "https://api.minimax.io"       # Optional: separate coding endpoint
-# default_coding_model = "model-01-Coding" # Model for coding tasks
+ # api_key_2 = "YOUR_CODING_API_KEY"           # Optional: separate coding API key
+ # base_url_2 = "https://api.axiom.io"         # Optional: separate coding endpoint
+ # default_coding_model = "anthropic/claude-3-5-sonnet-20241022"  # Model for coding tasks
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profile Example (for multiple environments)
 # ─────────────────────────────────────────────────────────────────────────────────
-# Select a profile with `minimax --profile <name>` or `MINIMAX_PROFILE=<name>`.
-[profiles.work]
-api_key = "WORK_MINIMAX_API_KEY"
-base_url = "https://api.minimax.io"
+# Select a profile with `axiom --profile <name>` or `AXIOM_PROFILE=<name>`.
+ [profiles.work]
+ api_key = "WORK_AXIOM_API_KEY"
+ base_url = "https://api.axiom.io"
 
-[profiles.dev]
-api_key = "DEV_MINIMAX_API_KEY"
-allow_shell = true
+ [profiles.dev]
+ api_key = "DEV_AXIOM_API_KEY"
+ allow_shell = true
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # Hooks (optional)

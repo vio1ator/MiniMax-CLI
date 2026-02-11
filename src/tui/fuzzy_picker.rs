@@ -398,7 +398,7 @@ fn index_paths(workspace: &Path) -> Vec<PathBuf> {
         ".aleph",
         "dist",
         "build",
-        ".minimax",
+        ".axiom",
     ];
 
     while let Some(dir) = queue.pop_front() {

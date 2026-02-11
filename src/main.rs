@@ -23,7 +23,6 @@ mod llm_client;
 mod logging;
 mod mcp;
 mod models;
-mod modules;
 mod palette;
 mod pricing;
 mod project_context;
@@ -504,7 +503,7 @@ async fn main() -> Result<()> {
                 let model = args
                     .model
                     .clone()
-                    .or_else(|| config.default_text_model.clone())
+                    .or_else(|| config.default_model.clone())
                     .unwrap_or_else(|| "model-01".to_string());
                 if args.auto || cli.yolo {
                     run_exec_agent(&config, &model, &args.prompt).await
@@ -534,7 +533,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let model = config
-        .default_text_model
+        .default_model
         .clone()
         .unwrap_or_else(|| "model-01".to_string());
     let max_subagents = cli
@@ -1756,7 +1755,7 @@ async fn run_review(config: &Config, args: ReviewArgs) -> Result<()> {
 
     let model = args
         .model
-        .or_else(|| config.default_text_model.clone())
+        .or_else(|| config.default_model.clone())
         .unwrap_or_else(|| "Axiom-model-01".to_string());
 
     let system = SystemPrompt::Text(
