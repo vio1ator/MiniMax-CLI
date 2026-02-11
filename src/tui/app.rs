@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::config::{Config, has_api_key, save_api_key};
+use crate::config::{Config, has_api_key};
 use crate::duo::{SharedDuoSession, new_shared_duo_session};
 use crate::hooks::{HookContext, HookEvent, HookExecutor, HookResult};
 use crate::models::{Message, SystemPrompt};
@@ -41,6 +41,21 @@ pub enum OnboardingState {
     EnteringKey,
     Success,
     None,
+}
+
+/// Current field being edited during onboarding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnboardingField {
+    ApiKey,
+    BaseUrl,
+}
+
+/// Result of testing connection to the API.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TestResult {
+    Pending,
+    Success,
+    Failed(String),
 }
 
 /// Supported application modes for the TUI.
@@ -229,6 +244,10 @@ pub struct App {
     pub onboarding: OnboardingState,
     pub api_key_input: String,
     pub api_key_cursor: usize,
+    pub base_url_input: String,
+    pub base_url_cursor: usize,
+    pub current_field: OnboardingField,
+    pub test_result: Option<TestResult>,
     // Hooks system
     pub hooks: HookExecutor,
     #[allow(dead_code)]
@@ -539,6 +558,10 @@ impl App {
             },
             api_key_input: String::new(),
             api_key_cursor: 0,
+            base_url_input: "https://api.axiom.io".to_string(),
+            base_url_cursor: char_count("https://api.axiom.io"),
+            current_field: OnboardingField::ApiKey,
+            test_result: None,
             hooks,
             yolo: initial_mode == AppMode::Yolo,
             shell_mode: false,
@@ -592,28 +615,40 @@ impl App {
         }
     }
 
-    pub fn submit_api_key(&mut self) -> Result<PathBuf, ApiKeyError> {
-        let key = self.api_key_input.trim().to_string();
-        if key.is_empty() {
-            return Err(ApiKeyError::Empty);
+    pub fn test_connection(&mut self) {
+        let api_key = self.api_key_input.trim().to_string();
+        let base_url = self.base_url_input.trim().to_string();
+
+        if api_key.is_empty() {
+            self.test_result = Some(TestResult::Failed("API key is required".to_string()));
+            return;
         }
 
-        match save_api_key(&key) {
-            Ok(path) => {
-                self.onboarding = OnboardingState::Success;
-                self.api_key_input.clear();
-                self.api_key_cursor = 0;
-                // Add welcome message after successful setup
-                self.add_message(HistoryCell::System {
-                    content: format!(
-                        "Welcome to Axiom CLI! Model: {} | Workspace: {}",
-                        self.model,
-                        self.workspace.display()
-                    ),
-                });
-                Ok(path)
+        if base_url.is_empty() {
+            self.test_result = Some(TestResult::Failed("Base URL is required".to_string()));
+            return;
+        }
+
+        self.test_result = Some(TestResult::Pending);
+
+        let api_key_clone = api_key.clone();
+        let base_url_clone = base_url.clone();
+
+        let result = std::thread::spawn(move || {
+            crate::client::test_connection_sync(&base_url_clone, &api_key_clone)
+        })
+        .join();
+
+        match result {
+            Ok(Ok(())) => {
+                self.test_result = Some(TestResult::Success);
             }
-            Err(source) => Err(ApiKeyError::SaveFailed { source }),
+            Ok(Err(e)) => {
+                self.test_result = Some(TestResult::Failed(e.to_string()));
+            }
+            Err(_) => {
+                self.test_result = Some(TestResult::Failed("Connection test failed".to_string()));
+            }
         }
     }
 
@@ -821,6 +856,41 @@ impl App {
         }
     }
 
+    pub fn insert_base_url_char(&mut self, c: char) {
+        let cursor = self.base_url_cursor.min(char_count(&self.base_url_input));
+        let byte_index = byte_index_at_char(&self.base_url_input, cursor);
+        self.base_url_input.insert(byte_index, c);
+        self.base_url_cursor = cursor + 1;
+    }
+
+    pub fn insert_base_url_str(&mut self, text: &str) {
+        let sanitized: String = text.chars().filter(|c| !c.is_control()).collect();
+        if sanitized.is_empty() {
+            return;
+        }
+        let cursor = self.base_url_cursor.min(char_count(&self.base_url_input));
+        let byte_index = byte_index_at_char(&self.base_url_input, cursor);
+        self.base_url_input.insert_str(byte_index, &sanitized);
+        self.base_url_cursor = cursor + char_count(&sanitized);
+    }
+
+    pub fn delete_base_url_char(&mut self) {
+        if self.base_url_cursor == 0 {
+            return;
+        }
+        let target = self.base_url_cursor.saturating_sub(1);
+        if remove_char_at(&mut self.base_url_input, target) {
+            self.base_url_cursor = target;
+        }
+    }
+
+    pub fn switch_onboarding_field(&mut self) {
+        self.current_field = match self.current_field {
+            OnboardingField::ApiKey => OnboardingField::BaseUrl,
+            OnboardingField::BaseUrl => OnboardingField::ApiKey,
+        };
+    }
+
     /// Paste from clipboard into input
     pub fn paste_from_clipboard(&mut self) {
         if let Some(content) = self.clipboard.read(self.workspace.as_path()) {
@@ -832,7 +902,6 @@ impl App {
                     self.insert_paste_text(&text);
                 }
                 ClipboardContent::Image { path, description } => {
-                    // Insert image path reference
                     let reference = format!("[Image: {} at {}]", description, path.display());
                     self.insert_str(&reference);
                     self.paste_burst.clear_after_explicit_paste();
@@ -845,6 +914,12 @@ impl App {
     pub fn paste_api_key_from_clipboard(&mut self) {
         if let Some(ClipboardContent::Text(text)) = self.clipboard.read(self.workspace.as_path()) {
             self.insert_api_key_str(&text);
+        }
+    }
+
+    pub fn paste_base_url_from_clipboard(&mut self) {
+        if let Some(ClipboardContent::Text(text)) = self.clipboard.read(self.workspace.as_path()) {
+            self.insert_base_url_str(&text);
         }
     }
 

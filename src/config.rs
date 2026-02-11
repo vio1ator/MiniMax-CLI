@@ -707,11 +707,19 @@ pub fn ensure_parent_dir(path: &Path) -> Result<()> {
 }
 
 /// Save an API key to the config file. Creates the file if it doesn't exist.
-pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
+/// Save API key and base URL to config file
+pub fn save_config_with_base_url(api_key: &str, base_url: &str) -> Result<PathBuf> {
     fn is_api_key_assignment(line: &str) -> bool {
         let trimmed = line.trim_start();
         trimmed
             .strip_prefix("api_key")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    }
+
+    fn is_base_url_assignment(line: &str) -> bool {
+        let trimmed = line.trim_start();
+        trimmed
+            .strip_prefix("base_url")
             .is_some_and(|rest| rest.trim_start().starts_with('='))
     }
 
@@ -721,38 +729,46 @@ pub fn save_api_key(api_key: &str) -> Result<PathBuf> {
     ensure_parent_dir(&config_path)?;
 
     let content = if config_path.exists() {
-        // Read existing config and update the api_key line
         let existing = fs::read_to_string(&config_path)?;
-        if existing.contains("api_key") {
-            // Replace existing api_key line
+
+        if existing.contains("api_key") || existing.contains("base_url") {
             let mut result = String::new();
+            let mut found_api_key = false;
+            let mut found_base_url = false;
             for line in existing.lines() {
                 if is_api_key_assignment(line) {
                     let _ = writeln!(result, "api_key = \"{api_key}\"");
+                    found_api_key = true;
+                } else if is_base_url_assignment(line) {
+                    let _ = writeln!(result, "base_url = \"{base_url}\"");
+                    found_base_url = true;
                 } else {
                     result.push_str(line);
                     result.push('\n');
                 }
             }
+            if !found_api_key {
+                let _ = writeln!(result, "api_key = \"{api_key}\"");
+            }
+            if !found_base_url {
+                let _ = writeln!(result, "base_url = \"{base_url}\"");
+            }
             result
         } else {
-            // Prepend api_key to existing config
-            format!("api_key = \"{api_key}\"\n{existing}")
+            format!("api_key = \"{api_key}\"\nbase_url = \"{base_url}\"\n{existing}")
         }
     } else {
-        // Create new minimal config
         format!(
-            r#" # Axiom CLI Configuration
+            r#"# Axiom CLI Configuration
  # Get your API key from your LLM provider's platform
 
-api_key = "{api_key}"
+ api_key = "{api_key}"
 
-# Base URL (default: https://api.axiom.io)
-# base_url = "https://api.axiom.io"
+ base_url = "{base_url}"
 
  # Default model
-  default_model = "anthropic/claude-3-5-sonnet-20241022"
-"#
+ default_model = "model-01"
+ "#
         )
     };
 
@@ -874,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn save_api_key_writes_config() -> Result<()> {
+    fn save_config_with_base_url_writes_config() -> Result<()> {
         let _lock = env_lock().lock().unwrap();
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -885,12 +901,13 @@ mod tests {
         fs::create_dir_all(&temp_root)?;
         let _guard = EnvGuard::new(&temp_root);
 
-        let path = save_api_key("test-key")?;
+        let path = save_config_with_base_url("test-key", "https://api.axiom.io")?;
         let expected = temp_root.join(".axiom").join("config.toml");
         assert_eq!(path, expected);
 
         let contents = fs::read_to_string(&path)?;
         assert!(contents.contains("api_key = \"test-key\""));
+        assert!(contents.contains("base_url = \"https://api.axiom.io\""));
         Ok(())
     }
 
@@ -986,12 +1003,13 @@ mod tests {
             "api_key_backup = \"old\"\napi_key = \"current\"\n",
         )?;
 
-        let path = save_api_key("new-key")?;
+        let path = save_config_with_base_url("new-key", "https://api.axiom.io")?;
         assert_eq!(path, config_path);
 
         let contents = fs::read_to_string(&config_path)?;
         assert!(contents.contains("api_key_backup = \"old\""));
         assert!(contents.contains("api_key = \"new-key\""));
+        assert!(contents.contains("base_url = \"https://api.axiom.io\""));
         Ok(())
     }
 

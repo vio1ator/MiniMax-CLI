@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 // === Core Message Types ===
 
 /// Request payload for sending a message to the API.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct MessageRequest {
     pub model: String,
     pub messages: Vec<Message>,
@@ -113,6 +113,31 @@ pub struct MessageResponse {
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
+}
+
+/// Response from models list endpoint (supports both Axiom and vLLM/OpenAI formats)
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelListResponse {
+    pub object: String,
+    #[serde(default)]
+    pub models: Vec<Model>,
+    #[serde(default)]
+    pub data: Vec<Model>,
+}
+
+/// A model available from the API
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Model {
+    pub id: String,
+    pub object: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owned_by: Option<String>,
 }
 
 /// Map known models to their approximate context window sizes.

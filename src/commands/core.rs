@@ -53,7 +53,6 @@ pub fn exit() -> CommandResult {
 }
 
 use crate::settings::Settings;
-use crate::tui::model_picker::validate_model;
 
 /// Switch or view current model
 ///
@@ -62,9 +61,21 @@ use crate::tui::model_picker::validate_model;
 pub fn model(app: &mut App, model_name: Option<&str>) -> CommandResult {
     if let Some(name) = model_name {
         // Validate the model name
-        if let Some(model_info) = validate_model(name) {
+        let available = crate::tui::model_picker::available_models();
+        let mut model_found = None;
+        for m in &available {
+            if m.id.eq_ignore_ascii_case(name)
+                || m.name.eq_ignore_ascii_case(name)
+                || m.id.to_lowercase() == name.to_lowercase()
+            {
+                model_found = Some(m.clone());
+                break;
+            }
+        }
+
+        if let Some(model_info) = model_found {
             let old_model = app.model.clone();
-            let new_model = model_info.id.to_string();
+            let new_model = model_info.id.clone();
             app.model = new_model.clone();
 
             // Persist to settings
@@ -82,7 +93,7 @@ pub fn model(app: &mut App, model_name: Option<&str>) -> CommandResult {
             ))
         } else {
             // Invalid model - show available models
-            let available = crate::tui::model_picker::AVAILABLE_MODELS
+            let available = crate::tui::model_picker::available_models()
                 .iter()
                 .map(|m| format!("  • {} - {}", m.id, m.name))
                 .collect::<Vec<_>>()

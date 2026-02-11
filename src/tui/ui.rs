@@ -47,7 +47,10 @@ use crate::tui::scrolling::{ScrollDirection, TranscriptScroll};
 use crate::tui::selection::TranscriptSelectionPoint;
 use crate::tui::tutorial::{handle_tutorial_key, render_tutorial};
 
-use super::app::{App, AppAction, AppMode, OnboardingState, QueuedMessage, TuiOptions};
+use super::app::{
+    App, AppAction, AppMode, OnboardingField, OnboardingState, QueuedMessage, TestResult,
+    TuiOptions,
+};
 use super::approval::{ApprovalMode, ApprovalRequest, ApprovalView, ReviewDecision};
 use super::history::{
     ExecCell, ExecSource, ExploringCell, ExploringEntry, GenericToolCell, HistoryCell, McpToolCell,
@@ -117,12 +120,11 @@ const AUTO_RLM_EXCLUDED_DIRS: &[&str] = &[
 
 // ASCII logo for onboarding screen only
 const LOGO: &str = r"
- ███╗   ███╗██╗███╗   ██╗██╗███╗   ███╗ █████╗ ██╗  ██╗
- ████╗ ████║██║████╗  ██║██║████╗ ████║██╔══██╗╚██╗██╔╝
- ██╔████╔██║██║██╔██╗ ██║██║██╔████╔██║███████║ ╚███╔╝
- ██║╚██╔╝██║██║██║╚██╗██║██║██║╚██╔╝██║██╔══██║ ██╔██╗
- ██║ ╚═╝ ██║██║██║ ╚████║██║██║ ╚═╝ ██║██║  ██║██╔╝ ██╗
- ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+     /\   X   X  I  OOO   M   M
+    /  \   \ /   I O   O  MM MM
+   / /\ \   X    I O   O  M M M
+  / ____ \ / \   I O   O  M   M
+ /_/    \_\   X  I  OOO   M   M
 ";
 
 /// Run the interactive TUI event loop.
@@ -597,10 +599,11 @@ async fn run_event_loop(
             // Handle bracketed paste events
             if let Event::Paste(text) = &evt {
                 if app.onboarding == OnboardingState::EnteringKey {
-                    // Paste into API key input
-                    app.insert_api_key_str(text);
+                    match app.current_field {
+                        OnboardingField::ApiKey => app.insert_api_key_str(text),
+                        OnboardingField::BaseUrl => app.insert_base_url_str(text),
+                    }
                 } else {
-                    // Paste into main input
                     if let Some(pending) = app.paste_burst.flush_before_modified_input() {
                         app.insert_str(&pending);
                     }
@@ -634,42 +637,76 @@ async fn run_event_loop(
                             app.onboarding = OnboardingState::Welcome;
                             app.api_key_input.clear();
                             app.api_key_cursor = 0;
+                            app.base_url_input.clear();
+                            app.base_url_cursor = 0;
+                            app.current_field = OnboardingField::ApiKey;
+                            app.test_result = None;
                         }
                     }
                     KeyCode::Enter => match app.onboarding {
                         OnboardingState::Welcome => {
                             app.onboarding = OnboardingState::EnteringKey;
                         }
-                        OnboardingState::EnteringKey => match app.submit_api_key() {
-                            Ok(path) => {
-                                app.status_message =
-                                    Some(format!("API key saved to {}", path.display()));
+                        OnboardingState::EnteringKey => {
+                            let api_key = app.api_key_input.trim().to_string();
+                            let base_url = app.base_url_input.trim().to_string();
+
+                            if api_key.is_empty() {
+                                app.status_message = Some("API key is required".to_string());
+                            } else if base_url.is_empty() {
+                                app.status_message = Some("Base URL is required".to_string());
+                            } else {
+                                match crate::config::save_config_with_base_url(&api_key, &base_url)
+                                {
+                                    Ok(path) => {
+                                        app.status_message = Some(format!(
+                                            "Configuration saved to {}",
+                                            path.display()
+                                        ));
+                                        app.test_result = None;
+                                        app.onboarding = OnboardingState::Success;
+                                    }
+                                    Err(e) => {
+                                        app.status_message = Some(e.to_string());
+                                    }
+                                }
                             }
-                            Err(e) => {
-                                app.status_message = Some(e.to_string());
-                            }
-                        },
+                        }
                         OnboardingState::Success => {
                             app.finish_onboarding();
-                            // Start tutorial after successful onboarding
                             if app.tutorial.should_show_on_startup() {
                                 app.tutorial.start();
                             }
                         }
                         OnboardingState::None => {}
                     },
-                    KeyCode::Backspace if app.onboarding == OnboardingState::EnteringKey => {
-                        app.delete_api_key_char();
+                    KeyCode::Backspace => {
+                        if app.onboarding == OnboardingState::EnteringKey {
+                            match app.current_field {
+                                OnboardingField::ApiKey => app.delete_api_key_char(),
+                                OnboardingField::BaseUrl => app.delete_base_url_char(),
+                            }
+                        }
                     }
                     KeyCode::Char(c) if app.onboarding == OnboardingState::EnteringKey => {
-                        app.insert_api_key_char(c);
+                        match app.current_field {
+                            OnboardingField::ApiKey => app.insert_api_key_char(c),
+                            OnboardingField::BaseUrl => app.insert_base_url_char(c),
+                        }
+                    }
+                    KeyCode::Tab => {
+                        if app.onboarding == OnboardingState::EnteringKey {
+                            app.switch_onboarding_field();
+                        }
                     }
                     KeyCode::Char('v')
                         if key.modifiers.contains(KeyModifiers::CONTROL)
                             && app.onboarding == OnboardingState::EnteringKey =>
                     {
-                        // Ctrl+V handled by bracketed paste above
-                        app.paste_api_key_from_clipboard();
+                        match app.current_field {
+                            OnboardingField::ApiKey => app.paste_api_key_from_clipboard(),
+                            OnboardingField::BaseUrl => app.paste_base_url_from_clipboard(),
+                        }
                     }
                     _ => {}
                 }
@@ -936,11 +973,22 @@ async fn run_event_loop(
                                         );
                                     }
                                     AppAction::OpenModelPicker => {
-                                        app.view_stack.push(
-                                            crate::tui::model_picker::ModelPicker::new(
-                                                app.model.clone(),
-                                            ),
-                                        );
+                                        let config = crate::config::Config::load(None, None).ok();
+                                        if let Some(config) = &config {
+                                            app.view_stack.push(
+                                                crate::tui::model_picker::ModelPicker::new(
+                                                    app.model.clone(),
+                                                    config,
+                                                ),
+                                            );
+                                        } else {
+                                            app.view_stack.push(
+                                                crate::tui::model_picker::ModelPicker::new(
+                                                    app.model.clone(),
+                                                    &crate::config::Config::default(),
+                                                ),
+                                            );
+                                        }
                                     }
                                     AppAction::OpenHistoryPicker => {
                                         app.view_stack.push(
@@ -3281,25 +3329,44 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
         OnboardingState::EnteringKey => {
             let mut lines = vec![
                 Line::from(Span::styled(
-                    "Enter Your API Key",
+                    "Configure Axiom CLI",
                     Style::default().fg(palette::BLUE).bold(),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "Paste your API key below:",
-                    Style::default().fg(palette::TEXT_PRIMARY),
                 )),
                 Line::from(""),
             ];
 
-            // API key input field (masked)
+            // Progress indicator
+            lines.push(Line::from(vec![
+                Span::styled("Step ", Style::default().fg(palette::TEXT_MUTED)),
+                Span::styled("1 of 2", Style::default().fg(palette::BLUE).bold()),
+                Span::styled(
+                    " - API Configuration",
+                    Style::default().fg(palette::TEXT_MUTED),
+                ),
+            ]));
+            lines.push(Line::from(""));
+
+            // API Key section
+            lines.push(Line::from(Span::styled(
+                "API Key",
+                if app.current_field == OnboardingField::ApiKey {
+                    Style::default().fg(palette::ORANGE).bold()
+                } else {
+                    Style::default().fg(palette::TEXT_PRIMARY)
+                },
+            )));
+            lines.push(Line::from(Span::styled(
+                "(Paste your API key)",
+                Style::default().fg(palette::TEXT_MUTED).italic(),
+            )));
+            lines.push(Line::from(""));
+
             let masked_key = if app.api_key_input.is_empty() {
                 Span::styled(
-                    "(paste your key here)",
+                    "(your key will be hidden)",
                     Style::default().fg(palette::TEXT_MUTED).italic(),
                 )
             } else {
-                // Show first 8 chars, mask the rest
                 let visible = app.api_key_input.chars().take(8).collect::<String>();
                 let hidden = "*".repeat(app.api_key_input.len().saturating_sub(8));
                 Span::styled(
@@ -3307,35 +3374,115 @@ fn render_onboarding(f: &mut Frame, area: Rect, app: &App) {
                     Style::default().fg(palette::STATUS_SUCCESS),
                 )
             };
-            lines.push(Line::from(masked_key));
+
+            // Add cursor indicator if this field is active
+            let key_line = if app.current_field == OnboardingField::ApiKey {
+                let cursor_pos = app.api_key_cursor.min(app.api_key_input.len());
+                let mut display = masked_key.to_string();
+                let _ = write!(
+                    display,
+                    "{}",
+                    if cursor_pos >= app.api_key_input.len() {
+                        " _"
+                    } else {
+                        " "
+                    }
+                );
+                Line::from(Span::styled(
+                    display,
+                    Style::default().fg(palette::TEXT_PRIMARY).bg(palette::BLUE),
+                ))
+            } else {
+                Line::from(masked_key)
+            };
+            lines.push(key_line);
+
+            lines.push(Line::from(""));
             lines.push(Line::from(""));
             lines.push(Line::from(""));
 
-            // Status message
-            if let Some(ref msg) = app.status_message {
-                lines.push(Line::from(Span::styled(
-                    msg,
-                    Style::default().fg(palette::STATUS_WARNING),
-                )));
+            // Base URL section
+            lines.push(Line::from(Span::styled(
+                "Base URL",
+                if app.current_field == OnboardingField::BaseUrl {
+                    Style::default().fg(palette::ORANGE).bold()
+                } else {
+                    Style::default().fg(palette::TEXT_PRIMARY)
+                },
+            )));
+            lines.push(Line::from(Span::styled(
+                "(Default: https://api.axiom.io)",
+                Style::default().fg(palette::TEXT_MUTED).italic(),
+            )));
+            lines.push(Line::from(""));
+
+            let base_url_display = if app.base_url_input.is_empty() {
+                "(your base URL)"
+            } else {
+                &app.base_url_input
+            };
+
+            let url_line = if app.current_field == OnboardingField::BaseUrl {
+                let cursor_pos = app.base_url_cursor.min(app.base_url_input.len());
+                let mut display = base_url_display.to_string();
+                let _ = write!(
+                    display,
+                    "{}",
+                    if cursor_pos >= base_url_display.len() {
+                        " _"
+                    } else {
+                        " "
+                    }
+                );
+                Line::from(Span::styled(
+                    display,
+                    Style::default().fg(palette::TEXT_PRIMARY).bg(palette::BLUE),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    base_url_display,
+                    Style::default().fg(palette::TEXT_PRIMARY),
+                ))
+            };
+            lines.push(url_line);
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(""));
+            lines.push(Line::from(""));
+
+            // Test connection section
+            if let Some(ref test_result) = app.test_result {
+                let (icon, color, msg) = match test_result {
+                    TestResult::Pending => ("⏳", palette::ORANGE, "Testing connection..."),
+                    TestResult::Success => ("✓", palette::STATUS_SUCCESS, "Connection successful!"),
+                    TestResult::Failed(err) => ("✗", palette::STATUS_ERROR, err.as_str()),
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(icon, Style::default().fg(color).bold()),
+                    Span::styled(msg, Style::default().fg(color)),
+                ]));
                 lines.push(Line::from(""));
             }
 
-            lines.push(Line::from(vec![
-                Span::styled("Press ", Style::default().fg(palette::TEXT_MUTED)),
-                Span::styled("Enter", Style::default().fg(palette::TEXT_PRIMARY).bold()),
-                Span::styled(" to save", Style::default().fg(palette::TEXT_MUTED)),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("Press ", Style::default().fg(palette::TEXT_MUTED)),
-                Span::styled("Esc", Style::default().fg(palette::TEXT_PRIMARY).bold()),
-                Span::styled(" to go back", Style::default().fg(palette::TEXT_MUTED)),
-            ]));
+            // Instructions footer
+            lines.push(Line::from(vec![Span::styled(
+                "Press Enter to save (when both fields are filled and tested)",
+                Style::default().fg(palette::TEXT_MUTED),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                "Press Tab to switch between fields",
+                Style::default().fg(palette::TEXT_MUTED),
+            )]));
+            lines.push(Line::from(vec![Span::styled(
+                "Press Esc to go back",
+                Style::default().fg(palette::TEXT_MUTED),
+            )]));
 
             let paragraph = Paragraph::new(lines)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(palette::ORANGE)),
+                        .border_style(Style::default().fg(palette::BLUE)),
                 )
                 .centered();
             f.render_widget(paragraph, content_area);

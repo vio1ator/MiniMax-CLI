@@ -12,9 +12,53 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use crate::config::{Config, RetryPolicy};
 use crate::llm_client::{LlmClient, StreamEventBox};
 use crate::logging;
-use crate::models::{MessageRequest, MessageResponse, StreamEvent};
+use crate::models::{
+    ContentBlock, Message, MessageRequest, MessageResponse, ModelListResponse, StreamEvent,
+};
 
 // === Types ===
+
+pub fn test_connection_sync(base_url: &str, api_key: &str) -> Result<()> {
+    let url = format!("{}/v1/messages", base_url.trim_end_matches('/'));
+
+    let client = reqwest::blocking::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert("x-api-key", HeaderValue::from_str(api_key)?);
+    headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+
+    let request = MessageRequest {
+        model: "model-01".to_string(),
+        messages: vec![Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text: "test".to_string(),
+                cache_control: None,
+            }],
+        }],
+        system: None,
+        tools: None,
+        tool_choice: None,
+        metadata: None,
+        thinking: None,
+        stream: Some(false),
+        temperature: None,
+        top_p: None,
+        max_tokens: 10,
+    };
+
+    let response = client.post(&url).json(&request).send()?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let _text = response
+            .text()
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        anyhow::bail!("Connection test failed: HTTP {}", status.as_u16());
+    }
+
+    Ok(())
+}
 
 /// Client for Anthropic-compatible API requests.
 #[derive(Clone)]
@@ -98,6 +142,23 @@ impl AnthropicClient {
             send_with_retry(&self.retry, || self.http_client.post(&url).json(&request)).await?;
 
         Ok(parse_sse_stream(response.bytes_stream()))
+    }
+
+    /// List available models from the API
+    pub async fn list_models(&self) -> Result<Vec<String>> {
+        let url = format!("{}/v1/models", self.base_url);
+
+        let response = self.http_client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to list models: HTTP {}: {}", status, text);
+        }
+
+        let result: ModelListResponse = response.json().await?;
+
+        Ok(result.models.into_iter().map(|m| m.id).collect())
     }
 }
 
