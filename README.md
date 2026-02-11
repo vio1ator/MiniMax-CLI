@@ -75,7 +75,7 @@ In the TUI, press `Tab` to cycle modes: **Normal → Plan → Agent → YOLO →
 - **Agent**: multi-step tool use; asks before shell or paid tools
 - **YOLO**: enables shell + trust + auto-approves all tools (dangerous)
 - **RLM**: externalized context + REPL helpers; auto-approves tools (best for large files)
-- **Duo**: player-coach autocoding with iterative validation (based on g3 paper)
+- **Duo**: player-coach autocoding with iterative validation, dedicated TUI view, and session management (based on g3 paper)
 
 Approval behavior is mode-dependent, but you can also override it at runtime with `/set approval_mode auto|suggest|never`.
 
@@ -111,6 +111,16 @@ Duo mode implements the player-coach autocoding paradigm for iterative developme
 
 Workflow: `init → player → coach → advance → (repeat until approved)`
 
+### Duo Session Management
+
+Sessions are persisted to `~/.minimax/sessions/duo/` and auto-saved after each turn. Use the CLI or TUI to manage sessions:
+
+- `minimax duo start --requirements <file>` - Start a new Duo workflow
+- `minimax duo continue <id>` - Resume a saved session by ID
+- `minimax duo sessions` - List all saved Duo sessions
+
+In the TUI, the **DuoView** modal shows phase color coding, turn counter, quality scores, feedback history, and a loop visualization of Player/Coach progression. The **DuoSessionPicker** provides fuzzy search over saved sessions with metadata preview and resume capability. The footer displays a progress indicator (e.g. `🎮 Player Phase (Turn 2/10)`).
+
 ## Examples
 
 ```bash
@@ -124,6 +134,11 @@ minimax --resume <id-prefix>   # Resume by ID/prefix
 
 minimax --workspace /path/to/project
 minimax --yolo                 # Start in YOLO mode (dangerous)
+
+minimax duo start --requirements docs/requirements.md  # Start Duo workflow
+minimax duo continue <session-id>                      # Resume a Duo session
+minimax duo sessions                                   # List Duo sessions
+minimax duo start --requirements spec.md --workspace .  # Duo in current dir
 
 minimax init                   # Generate a starter AGENTS.md
 ```
@@ -156,6 +171,7 @@ minimax --workspace . smoke-media --confirm
 - `docs/CONFIGURATION.md`
 - `docs/MCP.md`
 - `docs/ARCHITECTURE.md`
+- `docs/DUO.md`
 - `CONTRIBUTING.md`
 
 ## Development

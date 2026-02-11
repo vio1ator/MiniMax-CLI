@@ -92,6 +92,15 @@ Anthropic-compatible request/response format provided by MiniMax.
   - `subagent.rs` - Sub-agent spawning
   - `spec.rs` - Tool specifications
 
+### Duo Mode
+
+- **`duo.rs`** - State machine, workflow execution, and session persistence
+  - `DuoPhase`, `DuoStatus`, `DuoState` - Core state types
+  - `run_duo_workflow()` - Player-coach loop with LLM API integration
+  - `save_session()`, `load_session()`, `list_sessions()`, `delete_session()` - Session persistence to `~/.minimax/sessions/duo/`
+  - File I/O helpers: `read_file()`, `write_file()`, `list_files()`, `validate_path()`
+- **`tools/duo.rs`** - Tool definitions (`duo_init`, `duo_player`, `duo_coach`, `duo_advance`, `duo_status`)
+
 ### Extension Systems
 
 - **`mcp.rs`** - Model Context Protocol client for external tool servers
@@ -102,10 +111,12 @@ Anthropic-compatible request/response format provided by MiniMax.
 
 - **`tui/`** - Terminal UI components (ratatui-based)
   - `app.rs` - Application state and message handling
-  - `ui.rs` - Rendering logic
+  - `ui.rs` - Rendering logic (includes Duo footer progress indicator)
   - `approval.rs` - Tool approval dialog
   - `clipboard.rs` - Clipboard handling
   - `streaming.rs` - Streaming text collector
+  - `views/duo_view.rs` - DuoView modal component (phase color coding, turn counter, progress bar, quality scores, feedback history, loop visualization)
+  - `duo_session_picker.rs` - DuoSessionPicker session browser (fuzzy search, metadata preview, resume capability)
 
 - **`ui.rs`** - Legacy/simple UI utilities
 
@@ -194,3 +205,4 @@ command = "echo 'Running tool: $TOOL_NAME'"
 - `~/.minimax/mcp.json` - MCP server configuration
 - `~/.minimax/skills/` - User skills directory
 - `~/.minimax/sessions/` - Session history
+- `~/.minimax/sessions/duo/` - Duo mode session persistence

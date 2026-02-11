@@ -6,8 +6,9 @@ This directory is the long-form documentation for MiniMax CLI.
 
 - `../README.md` (quickstart + overview)
 - `CONFIGURATION.md` (config file, profiles, environment variables)
-- `MODES.md` (Normal/Plan/Agent/YOLO/RLM and approval behavior)
+- `MODES.md` (Normal/Plan/Agent/YOLO/RLM/Duo and approval behavior)
 - `RLM.md` (externalized context + REPL-powered workflows)
+- `DUO.md` (player-coach autocoding, session management, TUI view)
 - `MCP.md` (external tool servers via `mcp.json`)
 
 ## For Contributors

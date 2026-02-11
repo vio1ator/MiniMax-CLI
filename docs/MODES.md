@@ -7,13 +7,14 @@ MiniMax CLI has two related concepts:
 
 ## TUI Modes
 
-Press `Tab` to cycle: **Normal → Plan → Agent → YOLO → RLM → Normal**.
+Press `Tab` to cycle: **Normal → Plan → Agent → YOLO → RLM → Duo → Normal**.
 
 - **Normal**: chat-first. Approvals for file writes, shell, and paid tools.
 - **Plan**: design-first prompting. Approvals match Normal.
 - **Agent**: multi-step tool use. Approvals for shell and paid tools (file writes are allowed without a prompt).
 - **YOLO**: enables shell + trust mode and auto-approves all tools. Use only in trusted repos.
 - **RLM**: externalized context store + REPL helpers. Tools are auto-approved (best for large files and long-context work).
+- **Duo**: player-coach autocoding with iterative validation. Tools are auto-approved during the player-coach loop. Dedicated TUI view with phase visualization, quality scores, and session browser. See `DUO.md` for details.
 
 ## Approval Mode
 

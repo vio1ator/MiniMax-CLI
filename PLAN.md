@@ -44,6 +44,29 @@
   - Show quality scores and feedback
   - Integration with existing session management
 
+### Phase 2 Complete ✅
+- **Session persistence to `~/.minimax/sessions/duo/`**
+  - `save_session()`, `load_session()`, `list_sessions()`, `delete_session()`
+  - Auto-save after each turn
+  - JSON serialization using serde
+  - CLI commands: `minimax duo start`, `minimax duo continue`, `minimax duo sessions`
+
+### Phase 3 Complete ✅
+- **DuoView modal component** (`src/tui/views/duo_view.rs` - 412 lines)
+  - Phase indicator with color coding
+  - Turn counter and progress bar
+  - Quality scores visualization
+  - Feedback history display
+  - Loop visualization showing Player ↔ Coach progression
+
+- **DuoSessionPicker session browser** (`src/tui/duo_session_picker.rs` - 550 lines)
+  - Fuzzy search of saved sessions
+  - Session metadata display (phase, turns, quality)
+  - Resume capability
+
+- **Footer progress indicator** in `ui.rs`
+  - Shows: `🎮 Player Phase (Turn 2/10)` or `🏆 Coach Phase (Turn 2/10)`
+
 ---
 
 ## Implementation Plan
@@ -95,9 +118,9 @@ Connect `run_duo_workflow()` to actual LLM API calls using the existing `Anthrop
 
 ---
 
-### Phase 2: Session Persistence
+### Phase 2: Session Persistence ✅ COMPLETE
 
-#### Tasks
+#### Tasks ✅ Complete
 
 1. **Session serialization** (`src/duo.rs`)
    - Add `save_session(session, path)` function
@@ -117,9 +140,9 @@ Connect `run_duo_workflow()` to actual LLM API calls using the existing `Anthrop
 
 ---
 
-### Phase 3: TUI View
+### Phase 3: TUI View ✅ COMPLETE
 
-#### Tasks
+#### Tasks ✅ Complete
 
 1. **Duo mode screen** (`src/tui/ui.rs`)
    - Add `render_duo_mode()` function
@@ -165,7 +188,7 @@ Connect `run_duo_workflow()` to actual LLM API calls using the existing `Anthrop
 
 ```
  src/
- ├── duo.rs                    # State machine + workflow (extended with file I/O)
+ ├── duo.rs                    # State machine + workflow + session persistence
  ├── tools/duo.rs              # Tool definitions (already complete)
  ├── config.rs                 # Config (already complete)
  ├── core/
@@ -174,8 +197,10 @@ Connect `run_duo_workflow()` to actual LLM API calls using the existing `Anthrop
  │   └── ops.rs               # Operations
  ├── tui/
  │   ├── app.rs               # App state (already has Duo mode)
- │   ├── ui.rs                # Rendering (extended for Duo view)
- │   └── views/               # New: Duo view
+ │   ├── ui.rs                # Rendering (Duo footer progress indicator)
+ │   ├── duo_session_picker.rs # Session browser with fuzzy search (550 lines)
+ │   └── views/
+ │       └── duo_view.rs      # Duo modal component (412 lines)
  ├── main.rs                  # CLI handlers (extended with full implementation)
  └── prompts.rs               # System prompts (already has DUO_PROMPT)
 ```
@@ -220,6 +245,17 @@ Connect `run_duo_workflow()` to actual LLM API calls using the existing `Anthrop
 - [x] `minimax duo sessions` lists saved sessions
 - [x] `minimax duo continue <id>` resumes session
 - [x] Sessions persist across CLI invocations
+
+### Phase 2: Session Persistence ✅ COMPLETE
+- [x] Sessions saved to `~/.minimax/sessions/duo/` as JSON
+- [x] Auto-save after each turn
+- [x] `list_sessions()` and `delete_session()` work
+- [x] CLI commands: `duo start`, `duo continue`, `duo sessions`
+
+### Phase 3: TUI View ✅ COMPLETE
+- [x] DuoView modal with phase color coding, turn counter, progress bar, quality scores, feedback history, loop visualization
+- [x] DuoSessionPicker with fuzzy search, metadata preview, resume capability
+- [x] Footer progress indicator shows phase and turn
 
 ---
 
